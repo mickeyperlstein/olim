@@ -75,6 +75,21 @@
 // Stop review: add the visitor's local time to the pre-filled form link at tap time.
 (function () {
   function pad(n) { return (n < 10 ? '0' : '') + n; }
+  // The line the rider came from: ?line=<id>&dir=<n>, matched against this stop's lines.
+  function currentLineLabel() {
+    var params = new URLSearchParams(window.location.search);
+    var line = params.get('line');
+    if (!line) return '';
+    var dir = params.get('dir') || '';
+    var items = document.querySelectorAll('li[data-line]');
+    for (var i = 0; i < items.length; i++) {
+      var li = items[i];
+      if (li.getAttribute('data-line') === line && (!dir || li.getAttribute('data-dir') === dir)) {
+        return li.getAttribute('data-label');
+      }
+    }
+    return '';
+  }
   document.querySelectorAll('a[data-visit-time]').forEach(function (a) {
     var field = a.getAttribute('data-visit-time');
     if (!field) return;
@@ -84,6 +99,9 @@
         ' ' + pad(t.getHours()) + ':' + pad(t.getMinutes());
       var url = new URL(a.href);
       url.searchParams.set(field, stamp);
+      var lineField = a.getAttribute('data-line-field');
+      var label = currentLineLabel();
+      if (lineField && label) url.searchParams.set(lineField, label);
       a.href = url.toString();
     });
   });

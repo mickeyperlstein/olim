@@ -86,8 +86,8 @@ class BuildTest(unittest.TestCase):
 
     def test_line_page_links_to_stops_and_back(self):
         line = self.read(f"lines/{LINE}.html")
-        self.assertIn('href="../stops/21001.html"', line)
-        self.assertIn('href="../stops/31003.html"', line)
+        self.assertIn(f'href="../stops/21001.html?line={LINE}&amp;dir=1"', line)
+        self.assertIn(f'href="../stops/31003.html?line={LINE}&amp;dir=1"', line)
         stop = self.read("stops/31003.html")
         self.assertIn(f'href="../lines/{LINE}.html#dir-1"', stop)
         self.assertIn(f'href="../lines/{LINE}.html#dir-2"', stop)
@@ -131,8 +131,8 @@ class BuildTest(unittest.TestCase):
 
     def test_stops_are_numbered(self):
         line = self.read(f"lines/{LINE}.html")
-        self.assertIn('<span class="num">1</span><a href="../stops/21001.html">', line)
-        self.assertIn('<span class="num">3</span><a href="../stops/31003.html">', line)
+        self.assertIn('<span class="num">1</span><a href="../stops/21001.html?', line)
+        self.assertIn('<span class="num">3</span><a href="../stops/31003.html?', line)
 
     def test_search_box_on_every_page(self):
         for rel in ("index.html", f"lines/{LINE}.html", "stops/21001.html"):

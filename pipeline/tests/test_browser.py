@@ -88,6 +88,35 @@ def test_stop_review_link_prefilled(site, open_page):
     assert "entry.490134728=21001" in href
 
 
+def _review_query(page):
+    from urllib.parse import parse_qs, urlparse
+
+    page.locator('a[data-goatcounter-click="stop-review"]').click()
+    page.wait_for_timeout(500)
+    forms = [u for u in page.requested if "docs.google.com/forms" in u]
+    assert forms, "tapping the review button opened nothing"
+    return parse_qs(urlparse(forms[-1]).query)
+
+
+def test_stop_review_sends_line_when_coming_from_a_line(site, open_page):
+    page = open_page(site, f"{STOP_PAGE}?line={LINE}&dir=1")
+    query = _review_query(page)
+    assert query["entry.490134728"] == ["21001"]
+    assert query["entry.1960515240"] == ["18 לכיוון תחנה מרכזית (תל אביב יפו)"]
+
+
+def test_stop_review_without_line_leaves_it_blank(site, open_page):
+    page = open_page(site, STOP_PAGE)
+    query = _review_query(page)
+    assert "entry.1960515240" not in query
+
+
+def test_line_page_links_carry_line_to_stop(site, open_page):
+    page = open_page(site, LINE_PAGE)
+    href = page.locator("#dir-1 .route a").first.get_attribute("href")
+    assert href.endswith(f"stops/21001.html?line={LINE}&dir=1")
+
+
 def test_stop_review_adds_visit_time_on_tap(site, open_page):
     import re
     from urllib.parse import parse_qs, urlparse

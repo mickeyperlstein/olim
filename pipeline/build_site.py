@@ -53,6 +53,8 @@ def config():
         "stop_form_field": os.environ.get("OLIM_STOP_FORM_FIELD", "entry.490134728"),
         # Filled by site.js with the visitor's local time when they tap the review button.
         "stop_form_time_field": os.environ.get("OLIM_STOP_FORM_TIME_FIELD", "entry.1422047506"),
+        # Filled by site.js when the visitor reached the stop from a line page.
+        "stop_form_line_field": os.environ.get("OLIM_STOP_FORM_LINE_FIELD", "entry.1960515240"),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -392,13 +394,16 @@ def times_block(departures):
     return "".join(parts)
 
 
-def direction_block(d, stops):
+def direction_block(d, stops, line):
+    # The stop link carries the line and direction, so the stop page knows
+    # which line the rider came from (sent along with stop reviews).
+    ctx = e(f"?line={line_slug(line)}&dir={d['id']}")
     rows = []
     for i, (sid, offset) in enumerate(d["stops"], 1):
         s = stops[sid]
         rows.append(
             f'<li><span class="stop"><span class="num">{i}</span>'
-            f'<a href="../stops/{stop_slug(s)}.html">{e(s["stop_name"])}</a></span>'
+            f'<a href="../stops/{stop_slug(s)}.html{ctx}">{e(s["stop_name"])}</a></span>'
             f'<span class="muted">+{offset} דק׳</span></li>'
         )
     meta = f"{len(d['stops'])} תחנות"
@@ -428,7 +433,7 @@ def render_line(cfg, line, stops):
 <div class="badge">{e(line['number'])}</div>
 <div><h1>{e(title)}</h1><p class="muted">{e(summary)}</p><p class="jumps">{jumps}</p></div>
 </section>
-{''.join(direction_block(d, stops) for d in line['directions'])}
+{''.join(direction_block(d, stops, line) for d in line['directions'])}
 {faq_block(faq)}
 """
     desc = f"לוח זמנים, תחנות ושאלות נפוצות על {title}, בשני הכיוונים. מבוסס על נתוני משרד התחבורה."
@@ -473,7 +478,7 @@ def review_part(cfg, stop):
     url = f"{cfg['stop_form']}?usp=pp_url&{cfg['stop_form_field']}={urllib.parse.quote(code)}"
     return f"""<h3>מצב התחנה</h3>
 <p class="muted">עמדתם כאן? ספרו לנו בדקה: נקיון, צל, מקומות ישיבה, פח, גרפיטי ואוכל או שתייה בסביבה.</p>
-<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}">דרגו את התחנה</a>"""
+<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}" data-line-field="{e(cfg.get('stop_form_line_field', ''))}">דרגו את התחנה</a>"""
 
 
 def stop_view_block(cfg, stop):
@@ -497,7 +502,9 @@ def render_stop(cfg, stop, serving, lines):
         if wk:
             first_times.append(wk[0])
         items.append(
-            f'<li><a href="../lines/{line_slug(line)}.html#dir-{e(direction)}"><span class="mini">{e(line["number"])}</span> '
+            f'<li data-line="{e(line_slug(line))}" data-dir="{e(direction)}" '
+            f'data-label="{e(line["number"] + " לכיוון " + (d["dest"] or d["origin"]))}">'
+            f'<a href="../lines/{line_slug(line)}.html#dir-{e(direction)}"><span class="mini">{e(line["number"])}</span> '
             f'לכיוון {e(d["dest"] or d["origin"])}</a><span class="muted">{e(when)}</span></li>'
         )
     numbers = sorted({lines[k]["number"] for k, _ in serving}, key=lambda n: natural_key({"number": n}))
