@@ -159,49 +159,71 @@ def day_types_of(service, today):
     return [key for key, _, _ in DAY_TYPES if key in found]
 
 
+def line_key(route):
+    """The Ministry splits one public line into a route per direction and
+    variant. route_desc is 'licence-direction-variant' (e.g. '10001-1-0'):
+    the licence number plus operator identifies the line itself."""
+    parts = (route.get("route_desc") or "").split("-")
+    if len(parts) >= 2 and parts[0].strip().isdigit():
+        return f"{parts[0].strip()}-{route.get('agency_id', '')}", parts[1].strip() or "1"
+    return f"r{route['route_id']}", "1"
+
+
 def build_model(stops, agencies, routes, services, trips, calls, today):
-    lines = {}
-    stop_lines = defaultdict(dict)  # stop_id -> route_id -> {day: [minutes]}
+    empty_days = lambda: {key: set() for key, _, _ in DAY_TYPES}  # noqa: E731
 
-    by_route = defaultdict(list)
+    # trip ids grouped by line, then by direction, then by variant (route)
+    grouped = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     for trip_id, seq in calls.items():
-        if seq:
-            by_route[trips[trip_id]["route_id"]].append(trip_id)
+        route = routes.get(trips[trip_id]["route_id"])
+        if seq and route:
+            key, direction = line_key(route)
+            grouped[key][direction][route["route_id"]].append(trip_id)
 
-    for route_id, trip_ids in by_route.items():
-        route = routes.get(route_id)
-        if not route:
-            continue
-        # Representative trip: the one with the most stops.
-        rep = max(trip_ids, key=lambda t: (len(calls[t]), -calls[t][0][2]))
-        rep_calls = calls[rep]
-        start = rep_calls[0][2]
+    lines = {}
+    stop_lines = defaultdict(dict)  # stop_id -> (line key, direction) -> {day: [minutes]}
 
-        departures = {key: set() for key, _, _ in DAY_TYPES}
-        per_stop = defaultdict(lambda: {key: set() for key, _, _ in DAY_TYPES})
-        for t in trip_ids:
-            days = day_types_of(services.get(trips[t]["service_id"]), today)
-            for day in days:
-                departures[day].add(calls[t][0][2])
-                for _, sid, minutes in calls[t]:
-                    per_stop[sid][day].add(minutes)
+    for key, by_dir in grouped.items():
+        directions = []
+        for direction in sorted(by_dir):
+            variants = by_dir[direction]
+            # The main variant is the one with most trips; its longest trip gives the stop list.
+            main = max(variants, key=lambda r: (len(variants[r]), r))
+            rep = max(variants[main], key=lambda t: (len(calls[t]), -calls[t][0][2]))
+            rep_calls = calls[rep]
+            start = rep_calls[0][2]
 
-        origin, dest = route_ends(route)
-        agency = agencies.get(route.get("agency_id"), {})
-        lines[route_id] = {
-            "id": route_id,
-            "number": route.get("route_short_name") or "",
-            "type": ROUTE_TYPES.get(route.get("route_type", ""), "תחבורה ציבורית"),
-            "origin": origin,
-            "dest": dest,
+            departures = empty_days()
+            per_stop = defaultdict(empty_days)
+            for trip_ids in variants.values():
+                for t in trip_ids:
+                    for day in day_types_of(services.get(trips[t]["service_id"]), today):
+                        departures[day].add(calls[t][0][2])
+                        for _, sid, minutes in calls[t]:
+                            per_stop[sid][day].add(minutes)
+
+            origin, dest = route_ends(routes[main])
+            directions.append({
+                "id": direction,
+                "origin": origin,
+                "dest": dest,
+                "stops": [(sid, m - start) for _, sid, m in rep_calls if sid in stops],
+                "departures": {d: sorted(v) for d, v in departures.items()},
+                "duration": rep_calls[-1][2] - start,
+                "variants": len(variants),
+            })
+            for sid, days in per_stop.items():
+                stop_lines[sid][(key, direction)] = {d: sorted(v) for d, v in days.items()}
+
+        first_route = routes[next(iter(next(iter(by_dir.values()))))]
+        agency = agencies.get(first_route.get("agency_id"), {})
+        lines[key] = {
+            "id": key,
+            "number": first_route.get("route_short_name") or "",
+            "type": ROUTE_TYPES.get(first_route.get("route_type", ""), "תחבורה ציבורית"),
             "operator": agency.get("agency_name", ""),
-            "operator_url": agency.get("agency_url", ""),
-            "stops": [(sid, m - start) for _, sid, m in rep_calls if sid in stops],
-            "departures": {d: sorted(v) for d, v in departures.items()},
-            "duration": rep_calls[-1][2] - start,
+            "directions": directions,
         }
-        for sid, days in per_stop.items():
-            stop_lines[sid][route_id] = {d: sorted(v) for d, v in days.items()}
 
     return lines, stop_lines
 
@@ -279,32 +301,53 @@ def faq_block(faq):
     return f'<section class="card"><h2>שאלות נפוצות</h2>{items}</section>'
 
 
+def line_ends(line):
+    d0 = line["directions"][0]
+    if len(line["directions"]) > 1 or not d0["dest"]:
+        a, b = d0["origin"], d0["dest"] or line["directions"][-1]["origin"]
+    else:
+        a, b = d0["origin"], d0["dest"]
+    if not b or a == b:
+        return f"{a} (מעגלי)" if a else ""
+    return f"{a} – {b}"
+
+
 def line_title(line):
-    ends = f"{line['origin']} ← {line['dest']}" if line["dest"] else line["origin"]
-    return f"קו {line['number']} {ends}"
+    return f"קו {line['number']} {line_ends(line)}".strip()
 
 
-def line_faq(line, stops):
+def find_direction(line, direction):
+    return next((d for d in line["directions"] if d["id"] == direction), line["directions"][0])
+
+
+def line_faq(line):
     n = line["number"]
-    wk = line["departures"]["weekday"]
-    fri = line["departures"]["friday"]
-    sat = line["departures"]["saturday"]
-    origin = line["origin"] or "תחנת המוצא"
+    dirs = line["directions"]
+    d0 = dirs[0]
+    wk = d0["departures"]["weekday"]
+    fri = d0["departures"]["friday"]
+    origin = d0["origin"] or "תחנת המוצא"
     faq = []
     if wk:
         faq.append((f"מתי יוצא האוטובוס הראשון של קו {n}?", f"בימים א׳–ה׳ ב־{fmt_time(wk[0])} מ{origin}."))
         faq.append((f"מתי יוצא האוטובוס האחרון של קו {n}?", f"בימים א׳–ה׳ ב־{fmt_when(wk[-1])} מ{origin}."))
+    for d in dirs[1:2]:
+        back = d["departures"]["weekday"]
+        if back and d["origin"]:
+            faq.append((f"מתי יוצא קו {n} הראשון מ{d['origin']}?", f"בימים א׳–ה׳ ב־{fmt_time(back[0])}, והאחרון ב־{fmt_when(back[-1])}."))
+    if wk:
         gap = headway(wk)
         if gap:
             faq.append((f"כל כמה זמן יש קו {n}?", f"בשעות היום, בערך כל {gap} דקות (ימים א׳–ה׳)."))
     if fri:
-        faq.append((f"עד מתי פועל קו {n} ביום שישי?", f"היציאה האחרונה ביום שישי ב־{fmt_when(fri[-1])}."))
+        faq.append((f"עד מתי פועל קו {n} ביום שישי?", f"היציאה האחרונה ביום שישי ב־{fmt_when(fri[-1])} מ{origin}."))
+    sat = sorted(t for d in dirs for t in d["departures"]["saturday"])
     if sat:
         faq.append((f"האם קו {n} פועל בשבת?", f"כן. היציאה הראשונה בשבת ב־{fmt_time(sat[0])}."))
     else:
         faq.append((f"האם קו {n} פועל בשבת?", "לפי לוח הזמנים הרשמי, הקו לא פועל בשבת."))
-    if line["duration"] > 0 and line["dest"]:
-        faq.append((f"כמה זמן לוקחת הנסיעה בקו {n}?", f"כ־{line['duration']} דקות לפי לוח הזמנים, מ{origin} ל{line['dest']}. בעומס זה יכול לקחת יותר."))
+    if d0["duration"] > 0 and d0["dest"] and d0["dest"] != d0["origin"]:
+        faq.append((f"כמה זמן לוקחת הנסיעה בקו {n}?", f"כ־{d0['duration']} דקות לפי לוח הזמנים, מ{origin} ל{d0['dest']}. בעומס זה יכול לקחת יותר."))
     if line["operator"]:
         faq.append((f"מי מפעיל את קו {n}?", f"{line['operator']}."))
     return faq
@@ -316,36 +359,51 @@ def times_block(departures):
         times = departures[key]
         if times:
             chips = "".join(f"<li>{fmt_time(t)}</li>" for t in times)
-            parts.append(f"<h3>{label}</h3><ul class=\"times\">{chips}</ul>")
+            parts.append(f"<h4>{label}</h4><ul class=\"times\">{chips}</ul>")
         else:
-            parts.append(f"<h3>{label}</h3><p class=\"muted\">אין נסיעות.</p>")
-    return '<section class="card"><h2>שעות יציאה מתחנת המוצא</h2>' + "".join(parts) + "</section>"
+            parts.append(f"<h4>{label}</h4><p class=\"muted\">אין נסיעות.</p>")
+    return "".join(parts)
 
 
-def render_line(cfg, line, stops):
-    title = line_title(line)
+def direction_block(d, stops):
     rows = []
-    for sid, offset in line["stops"]:
+    for sid, offset in d["stops"]:
         s = stops[sid]
         rows.append(
             f'<li><a href="../stops/{stop_slug(s)}.html">{e(s["stop_name"])}</a>'
             f'<span class="muted">+{offset} דק׳</span></li>'
         )
-    faq = line_faq(line, stops)
-    summary = f"{line['type']} · {line['operator']} · {len(line['stops'])} תחנות"
-    if line["duration"] > 0:
-        summary += f" · כ־{line['duration']} דק׳ נסיעה"
+    meta = f"{len(d['stops'])} תחנות"
+    if d["duration"] > 0:
+        meta += f" · כ־{d['duration']} דק׳ נסיעה"
+    if d["variants"] > 1:
+        meta += f" · {d['variants']} וריאציות מסלול (התחנות לפי המסלול העיקרי)"
+    dest = d["dest"] or d["origin"]
+    return f"""<section class="card" id="dir-{e(d['id'])}">
+<h2>לכיוון {e(dest)}</h2>
+<p class="muted">מ{e(d['origin'])} · {e(meta)}</p>
+<h3>תחנות</h3><ol class="route">{''.join(rows)}</ol>
+<h3>שעות יציאה מ{e(d['origin'])}</h3>{times_block(d['departures'])}
+</section>"""
+
+
+def render_line(cfg, line, stops):
+    title = line_title(line)
+    faq = line_faq(line)
+    jumps = " · ".join(
+        f'<a href="#dir-{e(d["id"])}">לכיוון {e(d["dest"] or d["origin"])}</a>' for d in line["directions"]
+    )
+    summary = " · ".join(x for x in (line["type"], line["operator"]) if x)
     body = f"""
 <nav class="crumbs"><a href="../index.html">קווים</a> › קו {e(line['number'])}</nav>
 <section class="card hero">
 <div class="badge">{e(line['number'])}</div>
-<div><h1>{e(title)}</h1><p class="muted">{e(summary)}</p></div>
+<div><h1>{e(title)}</h1><p class="muted">{e(summary)}</p><p class="jumps">{jumps}</p></div>
 </section>
-<section class="card"><h2>תחנות הקו</h2><ol class="route">{''.join(rows)}</ol></section>
-{times_block(line['departures'])}
+{''.join(direction_block(d, stops) for d in line['directions'])}
 {faq_block(faq)}
 """
-    desc = f"לוח זמנים, תחנות ושאלות נפוצות על {title}. מבוסס על נתוני משרד התחבורה."
+    desc = f"לוח זמנים, תחנות ושאלות נפוצות על {title}, בשני הכיוונים. מבוסס על נתוני משרד התחבורה."
     return page(cfg, title=f"{title} | זמנים ותחנות", description=desc,
                 path=f"lines/{line_slug(line)}.html", body=body, depth=1, faq=faq)
 
@@ -355,17 +413,18 @@ def render_stop(cfg, stop, serving, lines):
     city = stop["city"]
     items = []
     first_times = []
-    for route_id, days in sorted(serving.items(), key=lambda kv: natural_key(lines[kv[0]])):
-        line = lines[route_id]
+    for (key, direction), days in sorted(serving.items(), key=lambda kv: (natural_key(lines[kv[0][0]]), kv[0][1])):
+        line = lines[key]
+        d = find_direction(line, direction)
         wk = days["weekday"]
         when = f"{fmt_time(wk[0])}–{fmt_time(wk[-1])}" if wk else "לא בימים א׳–ה׳"
         if wk:
             first_times.append(wk[0])
         items.append(
-            f'<li><a href="../lines/{line_slug(line)}.html"><span class="mini">{e(line["number"])}</span> '
-            f'לכיוון {e(line["dest"] or line["origin"])}</a><span class="muted">{e(when)}</span></li>'
+            f'<li><a href="../lines/{line_slug(line)}.html#dir-{e(direction)}"><span class="mini">{e(line["number"])}</span> '
+            f'לכיוון {e(d["dest"] or d["origin"])}</a><span class="muted">{e(when)}</span></li>'
         )
-    numbers = sorted({lines[r]["number"] for r in serving}, key=lambda n: natural_key({"number": n}))
+    numbers = sorted({lines[k]["number"] for k, _ in serving}, key=lambda n: natural_key({"number": n}))
     faq = [(f"אילו קווים עוצרים בתחנה {name}?", "קווים " + ", ".join(numbers) + ".")]
     if first_times:
         faq.append((f"מתי עובר האוטובוס הראשון בתחנה {name}?", f"בימים א׳–ה׳ בסביבות {fmt_time(min(first_times))}."))
@@ -374,7 +433,7 @@ def render_stop(cfg, stop, serving, lines):
     body = f"""
 <nav class="crumbs"><a href="../index.html">קווים</a> › תחנה</nav>
 <section class="card"><h1>{e(title)}</h1>
-<p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(serving)} קווים עוצרים כאן</p></section>
+<p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(numbers)} קווים עוצרים כאן</p></section>
 <section class="card"><h2>קווים בתחנה</h2><ul class="lines">{''.join(items)}</ul></section>
 {faq_block(faq)}
 """
@@ -385,8 +444,9 @@ def render_stop(cfg, stop, serving, lines):
 
 def render_index(cfg, lines):
     items = "".join(
-        f'<li><a href="lines/{line_slug(l)}.html"><span class="mini">{e(l["number"])}</span> {e(line_title(l)[len("קו " + l["number"]) + 1:])}</a></li>'
-        for l in sorted(lines.values(), key=natural_key)
+        f'<li><a href="lines/{line_slug(l)}.html"><span class="mini">{e(l["number"])}</span> {e(line_ends(l))}</a>'
+        f'<span class="muted">{e(l["operator"])}</span></li>'
+        for l in sorted(lines.values(), key=lambda l: (natural_key(l), l["operator"]))
     )
     cities = " / ".join(cfg["cities"][:1])
     body = f"""
