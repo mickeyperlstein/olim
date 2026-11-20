@@ -446,7 +446,7 @@ def coords(stop):
     return f"{lat:.6f},{lon:.6f}"
 
 
-def streetview_block(cfg, stop):
+def streetview_part(cfg, stop):
     """A Street View link, plus a tap-to-load embed when a key is configured.
     Nothing from Google loads until the visitor taps."""
     loc = coords(stop)
@@ -462,21 +462,26 @@ def streetview_block(cfg, stop):
             "f.title='מבט רחוב על התחנה';f.loading='lazy';f.allowFullscreen=true;"
             "f.referrerPolicy='no-referrer-when-downgrade';this.replaceWith(f);\">הצגת מבט רחוב על התחנה</button>"
         )
-    return f"""<section class="card"><h2>איך התחנה נראית</h2>
-{embed}
-<p class="muted"><a href="{e(link)}" target="_blank" rel="noopener" data-goatcounter-click="streetview-link">פתיחה ב־Google Street View</a>. במקומות מסוימים אין מבט רחוב ליד התחנה.</p>
-</section>"""
+    return f"""{embed}
+<p class="muted"><a href="{e(link)}" target="_blank" rel="noopener" data-goatcounter-click="streetview-link">פתיחה ב־Google Street View</a>. במקומות מסוימים אין מבט רחוב ליד התחנה.</p>"""
 
 
-def review_block(cfg, stop):
+def review_part(cfg, stop):
     if not cfg.get("stop_form"):
         return ""
     code = stop.get("stop_code") or stop["stop_id"]
     url = f"{cfg['stop_form']}?usp=pp_url&{cfg['stop_form_field']}={urllib.parse.quote(code)}"
-    return f"""<section class="card"><h2>עמדתם בתחנה הזו?</h2>
-<p class="muted">ספרו לנו בדקה: כמה היא נקייה, אם קל למצוא אותה, אם יש פח, גרפיטי או מקום לקנות שתייה בסביבה.</p>
-<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}">דרגו את התחנה</a>
-</section>"""
+    return f"""<h3>מצב התחנה</h3>
+<p class="muted">עמדתם כאן? ספרו לנו בדקה: נקיון, צל, מקומות ישיבה, פח, גרפיטי ואוכל או שתייה בסביבה.</p>
+<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}">דרגו את התחנה</a>"""
+
+
+def stop_view_block(cfg, stop):
+    """One block: how the stop looks (Street View) and its state (rider review)."""
+    parts = [p for p in (streetview_part(cfg, stop), review_part(cfg, stop)) if p]
+    if not parts:
+        return ""
+    return '<section class="card"><h2>מבט על התחנה</h2>\n' + "\n".join(parts) + "\n</section>"
 
 
 def render_stop(cfg, stop, serving, lines):
@@ -506,8 +511,7 @@ def render_stop(cfg, stop, serving, lines):
 <section class="card"><h1>{e(title)}</h1>
 <p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(numbers)} קווים עוצרים כאן</p></section>
 <section class="card"><h2>קווים בתחנה</h2><ul class="lines">{''.join(items)}</ul></section>
-{streetview_block(cfg, stop)}
-{review_block(cfg, stop)}
+{stop_view_block(cfg, stop)}
 {faq_block(faq)}
 """
     desc = f"אילו קווים עוצרים ב{title}, ומתי. מבוסס על נתוני משרד התחבורה."

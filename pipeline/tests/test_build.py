@@ -125,9 +125,9 @@ class BuildTest(unittest.TestCase):
         self.assertNotIn("sv-btn", stop)  # no key, no embed
         cfg = build_site.config()
         cfg["maps_key"] = "KEY"
-        block = build_site.streetview_block(cfg, {"stop_lat": "32.06", "stop_lon": "34.85"})
+        block = build_site.streetview_part(cfg, {"stop_lat": "32.06", "stop_lon": "34.85"})
         self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
-        self.assertEqual(build_site.streetview_block(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
+        self.assertEqual(build_site.streetview_part(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
 
     def test_stops_are_numbered(self):
         line = self.read(f"lines/{LINE}.html")
@@ -158,6 +158,20 @@ class BuildTest(unittest.TestCase):
         with open(os.path.join(out2, "index.html"), encoding="utf-8") as f:
             self.assertIn('datetime="2026-11-21T00:47+02:00">עודכן לאחרונה בתאריך 21.11.2026 ובשעה 00:47', f.read())
         self.assertIn("עודכן לאחרונה בתאריך 20.11.2026<", build_site.lastmod_html("2026-11-20"))  # older date-only entries
+
+    def test_stop_view_is_one_block(self):
+        stop = self.read("stops/21001.html")
+        self.assertEqual(stop.count("<h2>מבט על התחנה</h2>"), 1)
+        block = stop.split("<h2>מבט על התחנה</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn('data-goatcounter-click="streetview-link"', block)
+        self.assertIn('data-goatcounter-click="stop-review"', block)
+        self.assertNotIn("איך התחנה נראית", stop)
+        self.assertNotIn("עמדתם בתחנה הזו?", stop)
+        # a stop without coordinates still gets the review part
+        cfg = build_site.config()
+        html_text = build_site.stop_view_block(cfg, {"stop_id": "9", "stop_code": "9", "stop_lat": "", "stop_lon": ""})
+        self.assertIn("stop-review", html_text)
+        self.assertNotIn("streetview-link", html_text)
 
     def test_forms(self):
         stop = self.read("stops/21001.html")
