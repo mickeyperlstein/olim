@@ -85,4 +85,22 @@ def test_no_streetview_button_without_key(site, open_page):
 def test_stop_review_link_prefilled(site, open_page):
     page = open_page(site, STOP_PAGE)
     href = page.locator('a[data-goatcounter-click="stop-review"]').get_attribute("href")
-    assert href.endswith("entry.490134728=21001")
+    assert "entry.490134728=21001" in href
+
+
+def test_stop_review_adds_visit_time_on_tap(site, open_page):
+    import re
+    from urllib.parse import parse_qs, urlparse
+
+    page = open_page(site, STOP_PAGE)
+    page.evaluate("Date.now = () => new Date(2026, 10, 20, 2, 58).getTime()")  # local 20.11.2026 02:58
+    link = page.locator('a[data-goatcounter-click="stop-review"]')
+    link.click()
+    page.wait_for_timeout(500)
+    forms = [u for u in page.requested if "docs.google.com/forms" in u]
+    assert forms, "tapping the review button opened nothing"
+    query = parse_qs(urlparse(forms[-1]).query)
+    assert query["entry.490134728"] == ["21001"]
+    assert query["entry.1422047506"] == ["2026-11-20 02:58"]
+    # tapping again refreshes the time instead of adding a second copy
+    assert len(re.findall("entry.1422047506", link.get_attribute("href"))) == 1

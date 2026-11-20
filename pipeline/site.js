@@ -71,3 +71,20 @@
     if (!ev.target.closest('.find')) hide();
   });
 })();
+
+// Stop review: add the visitor's local time to the pre-filled form link at tap time.
+(function () {
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  document.querySelectorAll('a[data-visit-time]').forEach(function (a) {
+    var field = a.getAttribute('data-visit-time');
+    if (!field) return;
+    a.addEventListener('click', function () {
+      var t = new Date(Date.now());
+      var stamp = t.getFullYear() + '-' + pad(t.getMonth() + 1) + '-' + pad(t.getDate()) +
+        ' ' + pad(t.getHours()) + ':' + pad(t.getMinutes());
+      var url = new URL(a.href);
+      url.searchParams.set(field, stamp);
+      a.href = url.toString();
+    });
+  });
+})();

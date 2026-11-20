@@ -141,7 +141,7 @@ class BuildTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.out, "site.js")))
 
     def test_last_updated_moves_only_on_change(self):
-        self.assertIn('עודכן לאחרונה: <time datetime="2026-11-20T00:47+02:00">20.11.2026, 00:47</time>', self.read("index.html"))
+        self.assertIn('<time datetime="2026-11-20T00:47+02:00">עודכן לאחרונה בתאריך 20.11.2026 ובשעה 00:47</time>.', self.read("index.html"))
         self.assertIn("<lastmod>2026-11-20T00:47+02:00</lastmod>", self.read("sitemap.xml"))
         # Rebuild a day later from the same feed: nothing changed, dates stay.
         day = _dt.timedelta(days=1)
@@ -156,8 +156,8 @@ class BuildTest(unittest.TestCase):
         stats = build_site.build(self.zip, out2, cfg)
         self.assertGreater(stats["changed"], 0)
         with open(os.path.join(out2, "index.html"), encoding="utf-8") as f:
-            self.assertIn('datetime="2026-11-21T00:47+02:00">21.11.2026, 00:47', f.read())
-        self.assertIn("20.11.2026", build_site.lastmod_html("2026-11-20"))  # older date-only entries
+            self.assertIn('datetime="2026-11-21T00:47+02:00">עודכן לאחרונה בתאריך 21.11.2026 ובשעה 00:47', f.read())
+        self.assertIn("עודכן לאחרונה בתאריך 20.11.2026<", build_site.lastmod_html("2026-11-20"))  # older date-only entries
 
     def test_forms(self):
         stop = self.read("stops/21001.html")

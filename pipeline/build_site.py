@@ -51,6 +51,8 @@ def config():
             "https://docs.google.com/forms/d/e/1FAIpQLSeJL4HDv-7wOaXQWU5bgU2gmSsg4Gma-11QlkdTzWYL91or7g/viewform",
         ),
         "stop_form_field": os.environ.get("OLIM_STOP_FORM_FIELD", "entry.490134728"),
+        # Filled by site.js with the visitor's local time when they tap the review button.
+        "stop_form_time_field": os.environ.get("OLIM_STOP_FORM_TIME_FIELD", "entry.1422047506"),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -314,7 +316,7 @@ def page(cfg, *, title, description, path, body, depth, faq=None):
 </section>
 </main>
 <footer class="wrap foot">
-<p>עודכן לאחרונה: {LASTMOD}. נתוני לוחות זמנים: משרד התחבורה. המידע עשוי להשתנות. יש לבדוק במקורות הרשמיים לפני הנסיעה.</p>
+<p>{LASTMOD}. נתוני לוחות זמנים: משרד התחבורה. המידע עשוי להשתנות. יש לבדוק במקורות הרשמיים לפני הנסיעה.</p>
 </footer>
 </body>
 </html>
@@ -473,7 +475,7 @@ def review_block(cfg, stop):
     url = f"{cfg['stop_form']}?usp=pp_url&{cfg['stop_form_field']}={urllib.parse.quote(code)}"
     return f"""<section class="card"><h2>עמדתם בתחנה הזו?</h2>
 <p class="muted">ספרו לנו בדקה: כמה היא נקייה, אם קל למצוא אותה, אם יש פח, גרפיטי או מקום לקנות שתייה בסביבה.</p>
-<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review">דרגו את התחנה</a>
+<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}">דרגו את התחנה</a>
 </section>"""
 
 
@@ -584,9 +586,11 @@ def lastmod_html(iso):
     """Accepts a full timestamp ('2026-11-20T00:47+02:00') or an older date-only value."""
     if "T" in iso:
         t = dt.datetime.fromisoformat(iso)
-        return f'<time datetime="{iso}">{t.day}.{t.month}.{t.year}, {t:%H:%M}</time>'
-    d = dt.date.fromisoformat(iso)
-    return f'<time datetime="{iso}">{d.day}.{d.month}.{d.year}</time>'
+        text = f"עודכן לאחרונה בתאריך {t.day}.{t.month}.{t.year} ובשעה {t:%H:%M}"
+    else:
+        d = dt.date.fromisoformat(iso)
+        text = f"עודכן לאחרונה בתאריך {d.day}.{d.month}.{d.year}"
+    return f'<time datetime="{iso}">{text}</time>'
 
 
 def load_manifest(path):

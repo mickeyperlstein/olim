@@ -51,8 +51,15 @@ def phone(browser):
     """A phone-sized page that never touches the network: external requests
     (GoatCounter, Google) are answered with an empty 204 so tests stay offline."""
     ctx = browser.new_context(viewport={"width": 390, "height": 800})
-    ctx.route(lambda url: not url.startswith("file://"), lambda route: route.fulfill(status=204, body=""))
+    requested = []
+
+    def stub(route):
+        requested.append(route.request.url)
+        route.fulfill(status=200, body="", content_type="text/html")
+
+    ctx.route(lambda url: not url.startswith("file://"), stub)
     page = ctx.new_page()
+    page.requested = requested
     errors = []
     page.on("pageerror", lambda exc: errors.append(str(exc)))
     page.js_errors = errors
