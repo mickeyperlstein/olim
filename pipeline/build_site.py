@@ -30,7 +30,7 @@ def config():
     return {
         "cities": [c.strip() for c in cities.split("|") if c.strip()],
         "base_url": os.environ.get(
-            "OLIM_BASE_URL", "https://mickeyperlstein.github.io/olim/"
+            "OLIM_BASE_URL", "https://olim-app.com/"
         ).rstrip("/")
         + "/",
         "site_name": os.environ.get("OLIM_SITE_NAME", "עולים"),

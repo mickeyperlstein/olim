@@ -21,7 +21,7 @@ Environment variables read by `build_site.py`:
 | Variable | Default |
 |---|---|
 | `OLIM_CITIES` | `קרית אונו\|קריית אונו` (the `עיר:` value in `stops.txt`, `\|`-separated) |
-| `OLIM_BASE_URL` | `https://mickeyperlstein.github.io/olim/` |
+| `OLIM_BASE_URL` | `https://olim-app.com/` |
 | `OLIM_GOATCOUNTER` | `https://olim.goatcounter.com/count` |
 | `OLIM_SITE_NAME` | `עולים` |
 

@@ -137,6 +137,13 @@ class BuildTest(unittest.TestCase):
         self.assertIn('data-line-field="entry.570657219"', block)
         self.assertIn('data-visit-time="entry.127162871"', block)
 
+    def test_site_lives_on_own_domain(self):
+        line = self.read(f"lines/{LINE}.html")
+        self.assertIn(f'<link rel="canonical" href="https://olim-app.com/lines/{LINE}.html">', line)
+        self.assertIn("<loc>https://olim-app.com/index.html</loc>", self.read("sitemap.xml"))
+        self.assertIn("Sitemap: https://olim-app.com/sitemap.xml", self.read("robots.txt"))
+        self.assertNotIn("github.io", line)
+
     def test_map_link_pins_the_stop(self):
         # Street View links can't carry a map position, so backing out of them lands
         # on an empty map. The map link drops a pin on the stop instead.
