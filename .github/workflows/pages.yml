@@ -68,7 +68,8 @@ jobs:
         env:
           OLIM_MAPS_KEY: ${{ secrets.MAPS_EMBED_KEY }}
           OLIM_CHANGED_OUT: /tmp/changed-urls.txt
-          OLIM_ANNOUNCE_ALL: ${{ inputs.announce_all }}
+          # Manual run with the box ticked, or a push whose commit message says [announce-all].
+          OLIM_ANNOUNCE_ALL: ${{ inputs.announce_all || contains(github.event.head_commit.message, '[announce-all]') }}
         run: python -I pipeline/build_site.py /tmp/feed/gtfs.zip site
 
       - name: Record the feed version and page hashes
