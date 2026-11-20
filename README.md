@@ -32,10 +32,22 @@ If no stop matches the city name, the build stops and prints city names found in
 ```sh
 curl -fL -o /tmp/gtfs.zip https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip   # GET, never HEAD
 python3 -I pipeline/build_site.py /tmp/gtfs.zip site
-python3 -m unittest discover -s pipeline/tests
 ```
 
-Standard library only. The feed is untrusted input: it is parsed, never executed, and every value is HTML-escaped.
+The generator uses the standard library only. The feed is untrusted input: it is parsed, never executed, and every value is HTML-escaped.
+
+## Tests
+
+Test first: write the failing test, then the change. See `CLAUDE.md`.
+
+```sh
+pip install -r requirements-dev.txt
+python3 -m playwright install chromium
+python3 -m pytest
+git config core.hooksPath .githooks   # once: blocks pushes when tests fail
+```
+
+`pipeline/tests/test_build.py` covers the generator on a sample feed; `pipeline/tests/test_browser.py` opens the built pages in headless Chromium at phone width. CI runs both before every deploy.
 
 ## Data
 

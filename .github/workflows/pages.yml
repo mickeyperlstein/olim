@@ -29,8 +29,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Run tests
-        run: python -m unittest discover -s pipeline/tests
+      - name: Install test tools
+        run: |
+          pip install -r requirements-dev.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Run tests (generator and browser)
+        run: python -m pytest
 
       - name: Download the Ministry GTFS feed
         run: |
