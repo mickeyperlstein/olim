@@ -63,6 +63,10 @@ def config():
         "photo_form_stop_field": os.environ.get("OLIM_PHOTO_FORM_STOP_FIELD", "entry.720812025"),
         "photo_form_line_field": os.environ.get("OLIM_PHOTO_FORM_LINE_FIELD", "entry.570657219"),
         "photo_form_time_field": os.environ.get("OLIM_PHOTO_FORM_TIME_FIELD", "entry.127162871"),
+        # IndexNow key. Public by design: it is served at <site>/<key>.txt.
+        "indexnow_key": os.environ.get("OLIM_INDEXNOW_KEY", "58a985f1b9abf884e2c5fd66ecb0d192"),
+        # Where to list pages that changed in this build (for IndexNow); empty = don't write.
+        "changed_out": os.environ.get("OLIM_CHANGED_OUT", ""),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -649,6 +653,7 @@ def build(gtfs_path, out, cfg):
     stamp = cfg["now"].isoformat(timespec="minutes")
     manifest = {}
     changed = 0
+    changed_paths = set()
     for rel, html_text in pages.items():
         digest = hashlib.sha256(html_text.encode("utf-8")).hexdigest()[:16]
         prev = old.get(rel)
@@ -657,6 +662,7 @@ def build(gtfs_path, out, cfg):
         else:
             manifest[rel] = {"hash": digest, "lastmod": stamp}
             changed += 1
+            changed_paths.add(rel)
         write(out, rel, html_text.replace(LASTMOD, lastmod_html(manifest[rel]["lastmod"])))
     if cfg.get("manifest"):
         os.makedirs(os.path.dirname(os.path.abspath(cfg["manifest"])), exist_ok=True)
@@ -675,7 +681,14 @@ def build(gtfs_path, out, cfg):
     )
     write(out, "sitemap.xml", f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')
     write(out, ".nojekyll", "")
-    return {"lines": len(lines), "stops": len(stop_lines), "pages": len(listed), "changed": changed}
+    if cfg.get("indexnow_key"):
+        write(out, f"{cfg['indexnow_key']}.txt", cfg["indexnow_key"])
+    changed_urls = [cfg["base_url"] + p for p in listed if p in changed_paths]
+    if cfg.get("changed_out"):
+        with open(cfg["changed_out"], "w", encoding="utf-8") as f:
+            f.write("".join(u + "\n" for u in changed_urls))
+    return {"lines": len(lines), "stops": len(stop_lines), "pages": len(listed), "changed": changed,
+            "changed_urls": changed_urls}
 
 
 if __name__ == "__main__":

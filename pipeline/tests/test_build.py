@@ -137,6 +137,23 @@ class BuildTest(unittest.TestCase):
         self.assertIn('data-line-field="entry.570657219"', block)
         self.assertIn('data-visit-time="entry.127162871"', block)
 
+    def test_indexnow_key_file_at_root(self):
+        key = build_site.config()["indexnow_key"]
+        self.assertRegex(key, r"^[0-9a-f]{32}$")
+        self.assertEqual(self.read(f"{key}.txt"), key)
+
+    def test_changed_urls_listed_for_indexnow(self):
+        # first build: every page is new
+        self.assertIn(f"https://olim-app.com/lines/{LINE}.html", self.stats["changed_urls"])
+        self.assertNotIn("https://olim-app.com/notify.html", self.stats["changed_urls"])
+        # same feed a day later: nothing to announce
+        day = _dt.timedelta(days=1)
+        cfg = dict(self.cfg, today=TODAY + day, now=NOW + day)
+        out = os.path.join(self.tmp, "site_idx")
+        build_site.build(self.zip, out, dict(cfg, manifest=self.cfg["manifest"]))  # settle
+        stats = build_site.build(self.zip, out, dict(cfg, manifest=self.cfg["manifest"]))
+        self.assertEqual(stats["changed_urls"], [])
+
     def test_site_lives_on_own_domain(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn(f'<link rel="canonical" href="https://olim-app.com/lines/{LINE}.html">', line)
