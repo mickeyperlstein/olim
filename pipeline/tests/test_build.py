@@ -154,6 +154,11 @@ class BuildTest(unittest.TestCase):
         stats = build_site.build(self.zip, out, dict(cfg, manifest=self.cfg["manifest"]))
         self.assertEqual(stats["changed_urls"], [])
 
+    def test_bing_site_auth_file_at_root(self):
+        xml = self.read("BingSiteAuth.xml")
+        self.assertIn("<user>35A50FF268C7AED20040D00BAEC0E23E</user>", xml)
+        self.assertTrue(xml.startswith('<?xml version="1.0"?>'))
+
     def test_announce_all_lists_every_page(self):
         out = os.path.join(self.tmp, "site_all")
         stats = build_site.build(self.zip, out, dict(self.cfg, announce_all=True))

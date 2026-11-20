@@ -63,6 +63,8 @@ def config():
         "photo_form_stop_field": os.environ.get("OLIM_PHOTO_FORM_STOP_FIELD", "entry.720812025"),
         "photo_form_line_field": os.environ.get("OLIM_PHOTO_FORM_LINE_FIELD", "entry.570657219"),
         "photo_form_time_field": os.environ.get("OLIM_PHOTO_FORM_TIME_FIELD", "entry.127162871"),
+        # Bing Webmaster Tools ownership file, served at <site>/BingSiteAuth.xml.
+        "bing_site_auth": os.environ.get("OLIM_BING_SITE_AUTH", "35A50FF268C7AED20040D00BAEC0E23E"),
         # IndexNow key. Public by design: it is served at <site>/<key>.txt.
         "indexnow_key": os.environ.get("OLIM_INDEXNOW_KEY", "58a985f1b9abf884e2c5fd66ecb0d192"),
         # Where to list pages that changed in this build (for IndexNow); empty = don't write.
@@ -685,6 +687,9 @@ def build(gtfs_path, out, cfg):
     write(out, ".nojekyll", "")
     if cfg.get("indexnow_key"):
         write(out, f"{cfg['indexnow_key']}.txt", cfg["indexnow_key"])
+    if cfg.get("bing_site_auth"):
+        write(out, "BingSiteAuth.xml",
+              f'<?xml version="1.0"?>\n<users>\n\t<user>{e(cfg["bing_site_auth"])}</user>\n</users>\n')
     changed_urls = [cfg["base_url"] + p for p in listed if cfg.get("announce_all") or p in changed_paths]
     if cfg.get("changed_out"):
         with open(cfg["changed_out"], "w", encoding="utf-8") as f:
