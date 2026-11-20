@@ -1,0 +1,83 @@
+name: Build and publish pages
+
+on:
+  schedule:
+    - cron: "45 22 * * *"   # 22:45 UTC, about 00:45 in Israel, after the Ministry's nightly feed
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["pipeline/**", ".github/workflows/pages.yml"]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.feed.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest discover -s pipeline/tests
+
+      - name: Download the Ministry GTFS feed
+        run: |
+          mkdir -p /tmp/feed
+          # GET only; the Ministry server does not answer HEAD reliably.
+          curl -fL --retry 3 --retry-delay 30 -o /tmp/feed/gtfs.zip \
+            https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip
+          ls -lh /tmp/feed/gtfs.zip
+
+      - name: Check whether the feed changed
+        id: feed
+        run: |
+          new=$(sha256sum /tmp/feed/gtfs.zip | cut -d' ' -f1)
+          old=$(cat data/feed.sha256 2>/dev/null || true)
+          if [ "$new" = "$old" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Feed unchanged, skipping."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            mkdir -p data && echo "$new" > data/feed.sha256
+          fi
+
+      - name: Build pages
+        if: steps.feed.outputs.changed == 'true'
+        run: python -I pipeline/build_site.py /tmp/feed/gtfs.zip site
+
+      - name: Record the feed version
+        if: steps.feed.outputs.changed == 'true' && github.event_name == 'schedule'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/feed.sha256
+          git diff --cached --quiet || git commit -m "Feed update $(date -u +%Y-%m-%d)"
+          git push
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.feed.outputs.changed == 'true'
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
