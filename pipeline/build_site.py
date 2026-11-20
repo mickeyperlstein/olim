@@ -458,6 +458,9 @@ def streetview_part(cfg, stop):
     if not loc:
         return ""
     link = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={loc}"
+    # Street View links can't carry a map position, so backing out of them lands on
+    # an empty map. The map link pins the stop; Street View is one tap away there.
+    map_link = f"https://www.google.com/maps/search/?api=1&query={urllib.parse.quote(loc)}"
     embed = ""
     if cfg.get("maps_key"):
         src = f"https://www.google.com/maps/embed/v1/streetview?key={cfg['maps_key']}&location={loc}&fov=80"
@@ -468,7 +471,7 @@ def streetview_part(cfg, stop):
             "f.referrerPolicy='no-referrer-when-downgrade';this.replaceWith(f);\">הצגת מבט רחוב על התחנה</button>"
         )
     return f"""{embed}
-<p class="muted"><a href="{e(link)}" target="_blank" rel="noopener" data-goatcounter-click="streetview-link">פתיחה ב־Google Street View</a>. במקומות מסוימים אין מבט רחוב ליד התחנה.</p>"""
+<p class="muted"><a href="{e(map_link)}" target="_blank" rel="noopener" data-goatcounter-click="map-link">התחנה על המפה</a> · <a href="{e(link)}" target="_blank" rel="noopener" data-goatcounter-click="streetview-link">מבט רחוב (Street View)</a>. במקומות מסוימים אין מבט רחוב ליד התחנה.</p>"""
 
 
 def review_part(cfg, stop):

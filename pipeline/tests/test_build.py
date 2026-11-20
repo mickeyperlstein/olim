@@ -129,6 +129,18 @@ class BuildTest(unittest.TestCase):
         self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
         self.assertEqual(build_site.streetview_part(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
 
+    def test_map_link_pins_the_stop(self):
+        # Street View links can't carry a map position, so backing out of them lands
+        # on an empty map. The map link drops a pin on the stop instead.
+        stop = self.read("stops/21001.html")
+        self.assertIn(
+            'href="https://www.google.com/maps/search/?api=1&amp;query=32.060000%2C34.850000"', stop
+        )
+        self.assertIn('data-goatcounter-click="map-link"', stop)
+        # the map link comes before the Street View link
+        self.assertLess(stop.index('data-goatcounter-click="map-link"'),
+                        stop.index('data-goatcounter-click="streetview-link"'))
+
     def test_stops_are_numbered(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn('<span class="num">1</span><a href="../stops/21001.html?', line)
