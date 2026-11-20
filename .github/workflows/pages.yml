@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "45 22 * * *"   # 22:45 UTC, about 00:45 in Israel, after the Ministry's nightly feed
   workflow_dispatch:
+    inputs:
+      announce_all:
+        description: "Send every page to IndexNow, not only changed ones"
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths: ["pipeline/**", ".github/workflows/pages.yml"]
@@ -63,6 +68,7 @@ jobs:
         env:
           OLIM_MAPS_KEY: ${{ secrets.MAPS_EMBED_KEY }}
           OLIM_CHANGED_OUT: /tmp/changed-urls.txt
+          OLIM_ANNOUNCE_ALL: ${{ inputs.announce_all }}
         run: python -I pipeline/build_site.py /tmp/feed/gtfs.zip site
 
       - name: Record the feed version and page hashes

@@ -67,6 +67,8 @@ def config():
         "indexnow_key": os.environ.get("OLIM_INDEXNOW_KEY", "58a985f1b9abf884e2c5fd66ecb0d192"),
         # Where to list pages that changed in this build (for IndexNow); empty = don't write.
         "changed_out": os.environ.get("OLIM_CHANGED_OUT", ""),
+        # Announce every page, not just changed ones (manual one-off runs).
+        "announce_all": os.environ.get("OLIM_ANNOUNCE_ALL", "") == "true",
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -683,7 +685,7 @@ def build(gtfs_path, out, cfg):
     write(out, ".nojekyll", "")
     if cfg.get("indexnow_key"):
         write(out, f"{cfg['indexnow_key']}.txt", cfg["indexnow_key"])
-    changed_urls = [cfg["base_url"] + p for p in listed if p in changed_paths]
+    changed_urls = [cfg["base_url"] + p for p in listed if cfg.get("announce_all") or p in changed_paths]
     if cfg.get("changed_out"):
         with open(cfg["changed_out"], "w", encoding="utf-8") as f:
             f.write("".join(u + "\n" for u in changed_urls))

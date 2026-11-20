@@ -154,6 +154,11 @@ class BuildTest(unittest.TestCase):
         stats = build_site.build(self.zip, out, dict(cfg, manifest=self.cfg["manifest"]))
         self.assertEqual(stats["changed_urls"], [])
 
+    def test_announce_all_lists_every_page(self):
+        out = os.path.join(self.tmp, "site_all")
+        stats = build_site.build(self.zip, out, dict(self.cfg, announce_all=True))
+        self.assertEqual(len(stats["changed_urls"]), stats["pages"])
+
     def test_site_lives_on_own_domain(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn(f'<link rel="canonical" href="https://olim-app.com/lines/{LINE}.html">', line)
