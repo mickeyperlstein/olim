@@ -63,6 +63,8 @@ class BuildTest(unittest.TestCase):
         cfg = build_site.config()
         cfg["cities"] = ["קרית אונו"]
         cfg["today"] = TODAY
+        cfg["manifest"] = os.path.join(cls.tmp, "pages.json")
+        cls.cfg = cfg
         cls.stats = build_site.build(cls.zip, cls.out, cfg)
 
     def read(self, rel):
@@ -135,6 +137,23 @@ class BuildTest(unittest.TestCase):
         self.assertIn('src="../site.js"', self.read(f"lines/{LINE}.html"))
         self.assertTrue(os.path.exists(os.path.join(self.out, "site.js")))
 
+    def test_last_updated_moves_only_on_change(self):
+        self.assertIn('עודכן לאחרונה: <time datetime="2026-11-20">20.11.2026</time>', self.read("index.html"))
+        self.assertIn("<lastmod>2026-11-20</lastmod>", self.read("sitemap.xml"))
+        # Rebuild a day later from the same feed: nothing changed, dates stay.
+        cfg = dict(self.cfg, today=TODAY + __import__("datetime").timedelta(days=1))
+        out2 = os.path.join(self.tmp, "site2")
+        stats = build_site.build(self.zip, out2, cfg)
+        with open(os.path.join(out2, "stops/21001.html"), encoding="utf-8") as f:
+            self.assertIn('datetime="2026-11-20"', f.read())
+        self.assertEqual(stats["changed"], 0)
+        # A page whose content changes gets the new date.
+        cfg["site_name"] = "שם אחר"
+        stats = build_site.build(self.zip, out2, cfg)
+        self.assertGreater(stats["changed"], 0)
+        with open(os.path.join(out2, "index.html"), encoding="utf-8") as f:
+            self.assertIn('datetime="2026-11-21"', f.read())
+
     def test_html_is_escaped(self):
         self.assertEqual(build_site.e('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;")
 
@@ -142,6 +161,7 @@ class BuildTest(unittest.TestCase):
         cfg = build_site.config()
         cfg["cities"] = ["אין כזו"]
         cfg["today"] = TODAY
+        cfg["manifest"] = ""
         with self.assertRaises(SystemExit) as ctx:
             build_site.build(self.zip, os.path.join(self.tmp, "x"), cfg)
         self.assertIn("קרית אונו", str(ctx.exception))

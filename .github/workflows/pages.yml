@@ -59,14 +59,17 @@ jobs:
           OLIM_MAPS_KEY: ${{ secrets.MAPS_EMBED_KEY }}
         run: python -I pipeline/build_site.py /tmp/feed/gtfs.zip site
 
-      - name: Record the feed version
-        if: steps.feed.outputs.changed == 'true' && github.event_name == 'schedule'
+      - name: Record the feed version and page hashes
+        if: steps.feed.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/feed.sha256
-          git diff --cached --quiet || git commit -m "Feed update $(date -u +%Y-%m-%d)"
-          git push
+          git add data/feed.sha256 data/pages.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Data update $(date -u +%Y-%m-%d)"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         if: steps.feed.outputs.changed == 'true'

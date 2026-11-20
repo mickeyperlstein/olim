@@ -10,6 +10,7 @@ Static pages for every bus and train line and stop in a city, built nightly from
 2. Downloads the GTFS feed.
 3. Skips the rest on scheduled runs if the feed hasn't changed (its hash is kept in `data/feed.sha256`; the nightly commit of that file also keeps the repository active, so GitHub doesn't switch the schedule off).
 4. Builds the site with `pipeline/build_site.py` and deploys it to GitHub Pages.
+5. Commits `data/pages.json`: each page's content hash and the date it last really changed. That date is shown on the page ("עודכן לאחרונה") and used as the page's `lastmod` in the sitemap, so only pages whose content changed look fresh to search engines.
 
 Each line page lists its stops (each linking to the stop's page), its departures from the first stop for the coming week, and a FAQ answered from the timetable, also published as schema.org `FAQPage`. Each stop page lists the lines that call there, linking back. `sitemap.xml` and `robots.txt` (which allows the AI search crawlers) are generated too. Every page loads GoatCounter, and the "notify me" button records a `notify-click` event.
 

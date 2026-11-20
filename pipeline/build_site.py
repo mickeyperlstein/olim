@@ -9,6 +9,7 @@ HTML is escaped.
 """
 
 import csv
+import hashlib
 import datetime as dt
 import html
 import io
@@ -38,6 +39,8 @@ def config():
         "today": dt.date.today(),
         # Optional Google Maps Embed API key (free; restrict it to the site's domain).
         "maps_key": os.environ.get("OLIM_MAPS_KEY", "").strip(),
+        # Page hashes and last-changed dates, committed to the repo by the workflow.
+        "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
 
 
@@ -299,7 +302,7 @@ def page(cfg, *, title, description, path, body, depth, faq=None):
 </section>
 </main>
 <footer class="wrap foot">
-<p>נתוני לוחות זמנים: משרד התחבורה. המידע עשוי להשתנות. יש לבדוק במקורות הרשמיים לפני הנסיעה.</p>
+<p>עודכן לאחרונה: {LASTMOD}. נתוני לוחות זמנים: משרד התחבורה. המידע עשוי להשתנות. יש לבדוק במקורות הרשמיים לפני הנסיעה.</p>
 </footer>
 </body>
 </html>
@@ -535,34 +538,65 @@ def write(out, rel, text):
         f.write(text)
 
 
+LASTMOD = "\x00LASTMOD\x00"  # replaced after hashing, so the date never changes the hash
+
+
+def lastmod_html(iso):
+    d = dt.date.fromisoformat(iso)
+    return f'<time datetime="{iso}">{d.day}.{d.month}.{d.year}</time>'
+
+
+def load_manifest(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
 def build(gtfs_path, out, cfg):
     stops, agencies, routes, services, trips, calls = load(gtfs_path, cfg["cities"])
     lines, stop_lines = build_model(stops, agencies, routes, services, trips, calls, cfg["today"])
 
-    paths = ["index.html"]
+    pages = {"index.html": render_index(cfg, lines), "notify.html": render_notify(cfg)}
     for line in lines.values():
-        rel = f"lines/{line_slug(line)}.html"
-        write(out, rel, render_line(cfg, line, stops))
-        paths.append(rel)
+        pages[f"lines/{line_slug(line)}.html"] = render_line(cfg, line, stops)
     for sid, serving in stop_lines.items():
-        if sid not in stops:
-            continue
-        rel = f"stops/{stop_slug(stops[sid])}.html"
-        write(out, rel, render_stop(cfg, stops[sid], serving, lines))
-        paths.append(rel)
+        if sid in stops:
+            pages[f"stops/{stop_slug(stops[sid])}.html"] = render_stop(cfg, stops[sid], serving, lines)
 
-    write(out, "index.html", render_index(cfg, lines))
-    write(out, "notify.html", render_notify(cfg))
+    # Per-page hashes: a page's date moves only when its content really changes.
+    old = load_manifest(cfg["manifest"]) if cfg.get("manifest") else {}
+    today = cfg["today"].isoformat()
+    manifest = {}
+    changed = 0
+    for rel, html_text in pages.items():
+        digest = hashlib.sha256(html_text.encode("utf-8")).hexdigest()[:16]
+        prev = old.get(rel)
+        if prev and prev.get("hash") == digest:
+            manifest[rel] = prev
+        else:
+            manifest[rel] = {"hash": digest, "lastmod": today}
+            changed += 1
+        write(out, rel, html_text.replace(LASTMOD, lastmod_html(manifest[rel]["lastmod"])))
+    if cfg.get("manifest"):
+        os.makedirs(os.path.dirname(os.path.abspath(cfg["manifest"])), exist_ok=True)
+        with open(cfg["manifest"], "w", encoding="utf-8") as f:
+            json.dump(dict(sorted(manifest.items())), f, ensure_ascii=False, indent=0)
+            f.write("\n")
+
     here = os.path.dirname(os.path.abspath(__file__))
     for asset in ("style.css", "site.js"):
         with open(os.path.join(here, asset), encoding="utf-8") as f:
             write(out, asset, f.read())
     write(out, "robots.txt", ROBOTS.format(base=cfg["base_url"]))
-    today = dt.date.today().isoformat()
-    urls = "".join(f"<url><loc>{e(cfg['base_url'] + p)}</loc><lastmod>{today}</lastmod></url>" for p in paths)
+    listed = [p for p in manifest if p != "notify.html"]
+    urls = "".join(
+        f"<url><loc>{e(cfg['base_url'] + p)}</loc><lastmod>{manifest[p]['lastmod']}</lastmod></url>" for p in listed
+    )
     write(out, "sitemap.xml", f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')
     write(out, ".nojekyll", "")
-    return {"lines": len(lines), "stops": len(stop_lines), "pages": len(paths)}
+    return {"lines": len(lines), "stops": len(stop_lines), "pages": len(listed), "changed": changed}
 
 
 if __name__ == "__main__":
