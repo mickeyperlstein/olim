@@ -140,7 +140,10 @@ def load(gtfs_path, cities):
     for s in stops.values():
         s["city"] = stop_city(s)
 
-    city_stop_ids = {sid for sid, s in stops.items() if s["city"] in cities}
+    if "*" in cities:  # the whole country
+        city_stop_ids = set(stops)
+    else:
+        city_stop_ids = {sid for sid, s in stops.items() if s["city"] in cities}
     if not city_stop_ids:
         seen = sorted({s["city"] for s in stops.values() if s["city"]})
         raise SystemExit(

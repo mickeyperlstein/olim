@@ -1,0 +1,57 @@
+name: National scale check (dry run)
+
+# Builds the whole country from the real feed and reports size, time and
+# memory. Publishes nothing and commits nothing.
+on:
+  workflow_dispatch:
+  push:
+    branches: [scale-check]
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download the Ministry GTFS feed
+        run: |
+          mkdir -p /tmp/feed
+          curl -fL --retry 3 --retry-delay 30 -o /tmp/feed/gtfs.zip \
+            https://gtfs.mot.gov.il/gtfsfiles/israel-public-transportation.zip
+          ls -l /tmp/feed/gtfs.zip
+
+      - name: Feed statistics
+        run: /usr/bin/time -v python -I pipeline/feed_stats.py /tmp/feed/gtfs.zip 2> /tmp/stats-time.txt
+      - run: grep -E "Elapsed|Maximum resident" /tmp/stats-time.txt
+
+      - name: Build the whole country (current code)
+        continue-on-error: true
+        env:
+          OLIM_CITIES: "*"
+          OLIM_MANIFEST: /tmp/pages.json
+        run: /usr/bin/time -v python -I pipeline/build_site.py /tmp/feed/gtfs.zip /tmp/site 2> /tmp/build-time.txt; tail -3 /tmp/build-time.txt
+
+      - name: Report
+        if: always()
+        run: |
+          echo "== build time and memory =="
+          grep -E "Elapsed|Maximum resident|Exit status" /tmp/build-time.txt || true
+          echo "== site size =="
+          du -sh /tmp/site 2>/dev/null || echo "no site"
+          for d in lines stops; do
+            n=$(find /tmp/site/$d -name '*.html' 2>/dev/null | wc -l)
+            sz=$(du -sk /tmp/site/$d 2>/dev/null | cut -f1)
+            echo "$d: $n pages, ${sz} KB total, avg $(( n > 0 ? sz / n : 0 )) KB"
+          done
+          echo "== largest pages =="
+          find /tmp/site -name '*.html' -printf '%s %p\n' 2>/dev/null | sort -rn | head -5
+          echo "== gzip size of site (what the CDN sends) =="
+          tar -czf /tmp/site.tgz -C /tmp site 2>/dev/null && ls -l /tmp/site.tgz
