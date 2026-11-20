@@ -169,7 +169,9 @@ class BuildTest(unittest.TestCase):
     def test_site_lives_on_own_domain(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn(f'<link rel="canonical" href="https://olim-app.com/lines/{LINE}.html">', line)
-        self.assertIn("<loc>https://olim-app.com/index.html</loc>", self.read("sitemap-pages.xml"))
+        self.assertIn("<loc>https://olim-app.com/</loc>", self.read("sitemap-pages.xml"))
+        self.assertNotIn("olim-app.com/index.html", self.read("sitemap-pages.xml"))
+        self.assertIn('<link rel="canonical" href="https://olim-app.com/">', self.read("index.html"))
         self.assertIn("Sitemap: https://olim-app.com/sitemap.xml", self.read("robots.txt"))
         self.assertNotIn("github.io", line)
 
@@ -255,7 +257,7 @@ class BuildTest(unittest.TestCase):
             entry = json.load(f)["index.html"]
         self.assertEqual(entry["lastmod"], "2026-11-20T13:31+02:00")
         self.assertIn("data_hash", entry)
-        self.assertNotIn("https://olim-app.com/index.html", stats["changed_urls"])
+        self.assertNotIn("https://olim-app.com/", stats["changed_urls"])
 
     def test_stop_view_is_one_block(self):
         stop = self.read("stops/21001.html")

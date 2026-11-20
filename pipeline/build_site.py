@@ -294,7 +294,10 @@ def line_slug(line):
 
 
 def url_path(rel):
-    """Site-relative path as it appears in URLs (Hebrew city names percent-encoded)."""
+    """Site-relative path as it appears in URLs (Hebrew city names percent-encoded).
+    The home page's address is the bare domain, not /index.html."""
+    if rel == "index.html":
+        return ""
     return urllib.parse.quote(rel)
 
 
