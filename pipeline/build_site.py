@@ -277,11 +277,19 @@ def page(cfg, *, title, description, path, body, depth, faq=None):
 <meta name="description" content="{e(description)}">
 <link rel="canonical" href="{e(cfg['base_url'] + path)}">
 <link rel="stylesheet" href="{root}style.css">
+<script src="{root}site.js" defer></script>
 {ld}
 <script data-goatcounter="{e(cfg['goatcounter'])}" async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
-<header class="top"><div class="wrap"><a class="brand" href="{root}index.html">{e(cfg['site_name'])}</a></div></header>
+<header class="top"><div class="wrap">
+<a class="brand" href="{root}index.html">{e(cfg['site_name'])}</a>
+<form class="find" role="search" onsubmit="return false">
+<label for="find" class="sr">חיפוש בעמוד</label>
+<input id="find" type="search" placeholder="חיפוש קו או תחנה בעמוד" autocomplete="off" aria-controls="find-results" aria-expanded="false">
+<ul id="find-results" class="find-results" hidden></ul>
+</form>
+</div></header>
 <main class="wrap">
 {body}
 <section class="cta">
@@ -544,8 +552,10 @@ def build(gtfs_path, out, cfg):
 
     write(out, "index.html", render_index(cfg, lines))
     write(out, "notify.html", render_notify(cfg))
-    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "style.css"), encoding="utf-8") as f:
-        write(out, "style.css", f.read())
+    here = os.path.dirname(os.path.abspath(__file__))
+    for asset in ("style.css", "site.js"):
+        with open(os.path.join(here, asset), encoding="utf-8") as f:
+            write(out, asset, f.read())
     write(out, "robots.txt", ROBOTS.format(base=cfg["base_url"]))
     today = dt.date.today().isoformat()
     urls = "".join(f"<url><loc>{e(cfg['base_url'] + p)}</loc><lastmod>{today}</lastmod></url>" for p in paths)

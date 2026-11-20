@@ -124,6 +124,12 @@ class BuildTest(unittest.TestCase):
         self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
         self.assertEqual(build_site.streetview_block(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
 
+    def test_search_box_on_every_page(self):
+        for rel in ("index.html", f"lines/{LINE}.html", "stops/21001.html"):
+            self.assertIn('id="find"', self.read(rel), rel)
+        self.assertIn('src="../site.js"', self.read(f"lines/{LINE}.html"))
+        self.assertTrue(os.path.exists(os.path.join(self.out, "site.js")))
+
     def test_html_is_escaped(self):
         self.assertEqual(build_site.e('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;")
 
