@@ -641,30 +641,62 @@ def load_manifest(path):
         return {}
 
 
+def data_hash(data):
+    text = json.dumps(data, sort_keys=True, ensure_ascii=False, default=list)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def line_data(line, stops):
+    return {"line": line, "stop_names": {sid: stops[sid]["stop_name"]
+                                         for d in line["directions"] for sid, _ in d["stops"]}}
+
+
+def stop_data(stop, serving, lines):
+    fields = {k: stop.get(k, "") for k in ("stop_name", "stop_code", "stop_lat", "stop_lon", "city")}
+    served = sorted(
+        [key, direction, days, lines[key]["number"],
+         find_direction(lines[key], direction)["dest"] or find_direction(lines[key], direction)["origin"]]
+        for (key, direction), days in serving.items()
+    )
+    return {"stop": fields, "served": served}
+
+
+def index_data(lines):
+    return sorted([l["id"], l["number"], line_ends(l), l["operator"]] for l in lines.values())
+
+
 def build(gtfs_path, out, cfg):
     stops, agencies, routes, services, trips, calls = load(gtfs_path, cfg["cities"])
     lines, stop_lines = build_model(stops, agencies, routes, services, trips, calls, cfg["today"])
 
-    pages = {"index.html": render_index(cfg, lines), "notify.html": render_notify(cfg)}
+    # Each page: (html, data). The date shown on a page follows its transit data only,
+    # so design or address changes don't make every page look updated.
+    pages = {
+        "index.html": (render_index(cfg, lines), index_data(lines)),
+        "notify.html": (render_notify(cfg), "notify"),
+    }
     for line in lines.values():
-        pages[f"lines/{line_slug(line)}.html"] = render_line(cfg, line, stops)
+        pages[f"lines/{line_slug(line)}.html"] = (render_line(cfg, line, stops), line_data(line, stops))
     for sid, serving in stop_lines.items():
         if sid in stops:
-            pages[f"stops/{stop_slug(stops[sid])}.html"] = render_stop(cfg, stops[sid], serving, lines)
+            pages[f"stops/{stop_slug(stops[sid])}.html"] = (
+                render_stop(cfg, stops[sid], serving, lines), stop_data(stops[sid], serving, lines))
 
-    # Per-page hashes: a page's date moves only when its content really changes.
     old = load_manifest(cfg["manifest"]) if cfg.get("manifest") else {}
     stamp = cfg["now"].isoformat(timespec="minutes")
     manifest = {}
     changed = 0
     changed_paths = set()
-    for rel, html_text in pages.items():
-        digest = hashlib.sha256(html_text.encode("utf-8")).hexdigest()[:16]
+    for rel, (html_text, data) in pages.items():
+        digest = data_hash(data)
         prev = old.get(rel)
-        if prev and prev.get("hash") == digest:
+        if prev and "data_hash" not in prev:
+            # Manifest from before data hashing: keep its date, adopt the new hash.
+            manifest[rel] = {"data_hash": digest, "lastmod": prev["lastmod"]}
+        elif prev and prev.get("data_hash") == digest:
             manifest[rel] = prev
         else:
-            manifest[rel] = {"hash": digest, "lastmod": stamp}
+            manifest[rel] = {"data_hash": digest, "lastmod": stamp}
             changed += 1
             changed_paths.add(rel)
         write(out, rel, html_text.replace(LASTMOD, lastmod_html(manifest[rel]["lastmod"])))

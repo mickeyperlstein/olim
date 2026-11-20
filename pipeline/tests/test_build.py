@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import sys
@@ -205,13 +206,55 @@ class BuildTest(unittest.TestCase):
         with open(os.path.join(out2, "stops/21001.html"), encoding="utf-8") as f:
             self.assertIn('datetime="2026-11-20T00:47+02:00"', f.read())
         self.assertEqual(stats["changed"], 0)
-        # A page whose content changes gets the new date.
-        cfg["site_name"] = "שם אחר"
-        stats = build_site.build(self.zip, out2, cfg)
-        self.assertGreater(stats["changed"], 0)
-        with open(os.path.join(out2, "index.html"), encoding="utf-8") as f:
-            self.assertIn('datetime="2026-11-21T00:47+02:00">עודכן לאחרונה בתאריך 21.11.2026 ובשעה 00:47', f.read())
         self.assertIn("עודכן לאחרונה בתאריך 20.11.2026<", build_site.lastmod_html("2026-11-20"))  # older date-only entries
+
+    def _zip(self, name, extra_trip=False):
+        files = dict(FILES)
+        if extra_trip:
+            files["trips.txt"] += "100,WK,t8,,0,\n"
+            files["stop_times.txt"] += (
+                "t8,10:00:00,10:00:00,1,1\nt8,10:04:00,10:04:00,2,2\nt8,10:30:00,10:30:00,3,3\n"
+            )
+        path = os.path.join(self.tmp, name)
+        with zipfile.ZipFile(path, "w") as zf:
+            for fname, text in files.items():
+                zf.writestr(fname, text)
+        return path
+
+    def _cfg(self, manifest, days=0, **extra):
+        day = _dt.timedelta(days=days)
+        return dict(self.cfg, today=TODAY + day, now=NOW + day,
+                    manifest=os.path.join(self.tmp, manifest), **extra)
+
+    def test_dates_ignore_design_and_address(self):
+        base = self._zip("base.zip")
+        build_site.build(base, os.path.join(self.tmp, "d1"), self._cfg("m_design.json"))
+        stats = build_site.build(base, os.path.join(self.tmp, "d2"), self._cfg(
+            "m_design.json", days=1, site_name="שם אחר", base_url="https://example.org/"))
+        self.assertEqual(stats["changed"], 0)
+        with open(os.path.join(self.tmp, "d2", "index.html"), encoding="utf-8") as f:
+            self.assertIn('datetime="2026-11-20T00:47+02:00"', f.read())
+
+    def test_timetable_change_moves_only_affected_pages(self):
+        build_site.build(self._zip("a.zip"), os.path.join(self.tmp, "t1"), self._cfg("m_data.json"))
+        stats = build_site.build(self._zip("b.zip", extra_trip=True), os.path.join(self.tmp, "t2"),
+                                 self._cfg("m_data.json", days=1))
+        changed = {u.split("olim-app.com/", 1)[1] for u in stats["changed_urls"]}
+        self.assertEqual(changed, {f"lines/{LINE}.html", "stops/21001.html", "stops/21002.html", "stops/31003.html"})
+        with open(os.path.join(self.tmp, "t2", f"lines/{LINE}.html"), encoding="utf-8") as f:
+            self.assertIn('datetime="2026-11-21T00:47+02:00"', f.read())
+
+    def test_switching_hash_method_keeps_existing_dates(self):
+        manifest = os.path.join(self.tmp, "m_old.json")
+        with open(manifest, "w", encoding="utf-8") as f:
+            json.dump({"index.html": {"hash": "0123456789abcdef", "lastmod": "2026-11-20T13:31+02:00"}}, f)
+        stats = build_site.build(self._zip("c.zip"), os.path.join(self.tmp, "o1"),
+                                 self._cfg("m_old.json", days=1))
+        with open(manifest, encoding="utf-8") as f:
+            entry = json.load(f)["index.html"]
+        self.assertEqual(entry["lastmod"], "2026-11-20T13:31+02:00")
+        self.assertIn("data_hash", entry)
+        self.assertNotIn("https://olim-app.com/index.html", stats["changed_urls"])
 
     def test_stop_view_is_one_block(self):
         stop = self.read("stops/21001.html")
