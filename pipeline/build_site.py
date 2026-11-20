@@ -473,7 +473,7 @@ def review_block(cfg, stop):
     url = f"{cfg['stop_form']}?usp=pp_url&{cfg['stop_form_field']}={urllib.parse.quote(code)}"
     return f"""<section class="card"><h2>עמדתם בתחנה הזו?</h2>
 <p class="muted">ספרו לנו בדקה: כמה היא נקייה, אם קל למצוא אותה, אם יש פח, גרפיטי או מקום לקנות שתייה בסביבה.</p>
-<a class="sv-btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review">דרגו את התחנה</a>
+<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review">דרגו את התחנה</a>
 </section>"""
 
 
@@ -532,7 +532,7 @@ def render_index(cfg, lines):
 def render_notify(cfg):
     signup = cfg.get("signup_form")
     action = (
-        f'<p><a class="sv-btn" href="{e(signup)}" target="_blank" rel="noopener" '
+        f'<p><a class="btn" href="{e(signup)}" target="_blank" rel="noopener" '
         f'data-goatcounter-click="signup-open">השאירו מייל ונעדכן כשהיא יוצאת</a></p>'
         if signup else "<p>ההרשמה לעדכונים תיפתח בקרוב.</p>"
     )
