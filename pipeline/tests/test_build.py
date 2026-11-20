@@ -10,6 +10,8 @@ import build_site  # noqa: E402
 
 LINE = "10018-3"
 TODAY = __import__("datetime").date(2026, 11, 20)
+_dt = __import__("datetime")
+NOW = _dt.datetime(2026, 11, 20, 0, 47, tzinfo=_dt.timezone(_dt.timedelta(hours=2)))
 
 FILES = {
     "agency.txt": "agency_id,agency_name,agency_url\n3,אגד,http://egged.co.il\n",
@@ -63,6 +65,7 @@ class BuildTest(unittest.TestCase):
         cfg = build_site.config()
         cfg["cities"] = ["קרית אונו"]
         cfg["today"] = TODAY
+        cfg["now"] = NOW
         cfg["manifest"] = os.path.join(cls.tmp, "pages.json")
         cls.cfg = cfg
         cls.stats = build_site.build(cls.zip, cls.out, cfg)
@@ -138,21 +141,23 @@ class BuildTest(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.out, "site.js")))
 
     def test_last_updated_moves_only_on_change(self):
-        self.assertIn('עודכן לאחרונה: <time datetime="2026-11-20">20.11.2026</time>', self.read("index.html"))
-        self.assertIn("<lastmod>2026-11-20</lastmod>", self.read("sitemap.xml"))
+        self.assertIn('עודכן לאחרונה: <time datetime="2026-11-20T00:47+02:00">20.11.2026, 00:47</time>', self.read("index.html"))
+        self.assertIn("<lastmod>2026-11-20T00:47+02:00</lastmod>", self.read("sitemap.xml"))
         # Rebuild a day later from the same feed: nothing changed, dates stay.
-        cfg = dict(self.cfg, today=TODAY + __import__("datetime").timedelta(days=1))
+        day = _dt.timedelta(days=1)
+        cfg = dict(self.cfg, today=TODAY + day, now=NOW + day)
         out2 = os.path.join(self.tmp, "site2")
         stats = build_site.build(self.zip, out2, cfg)
         with open(os.path.join(out2, "stops/21001.html"), encoding="utf-8") as f:
-            self.assertIn('datetime="2026-11-20"', f.read())
+            self.assertIn('datetime="2026-11-20T00:47+02:00"', f.read())
         self.assertEqual(stats["changed"], 0)
         # A page whose content changes gets the new date.
         cfg["site_name"] = "שם אחר"
         stats = build_site.build(self.zip, out2, cfg)
         self.assertGreater(stats["changed"], 0)
         with open(os.path.join(out2, "index.html"), encoding="utf-8") as f:
-            self.assertIn('datetime="2026-11-21"', f.read())
+            self.assertIn('datetime="2026-11-21T00:47+02:00">21.11.2026, 00:47', f.read())
+        self.assertIn("20.11.2026", build_site.lastmod_html("2026-11-20"))  # older date-only entries
 
     def test_html_is_escaped(self):
         self.assertEqual(build_site.e('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;")

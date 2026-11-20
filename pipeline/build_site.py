@@ -37,6 +37,7 @@ def config():
             "OLIM_GOATCOUNTER", "https://olim.goatcounter.com/count"
         ),
         "today": dt.date.today(),
+        "now": israel_now(),
         # Optional Google Maps Embed API key (free; restrict it to the site's domain).
         "maps_key": os.environ.get("OLIM_MAPS_KEY", "").strip(),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
@@ -541,7 +542,19 @@ def write(out, rel, text):
 LASTMOD = "\x00LASTMOD\x00"  # replaced after hashing, so the date never changes the hash
 
 
+def israel_now():
+    try:
+        from zoneinfo import ZoneInfo
+        return dt.datetime.now(ZoneInfo("Asia/Jerusalem")).replace(second=0, microsecond=0)
+    except Exception:  # no tz database: fall back to UTC
+        return dt.datetime.now(dt.timezone.utc).replace(second=0, microsecond=0)
+
+
 def lastmod_html(iso):
+    """Accepts a full timestamp ('2026-11-20T00:47+02:00') or an older date-only value."""
+    if "T" in iso:
+        t = dt.datetime.fromisoformat(iso)
+        return f'<time datetime="{iso}">{t.day}.{t.month}.{t.year}, {t:%H:%M}</time>'
     d = dt.date.fromisoformat(iso)
     return f'<time datetime="{iso}">{d.day}.{d.month}.{d.year}</time>'
 
@@ -567,7 +580,7 @@ def build(gtfs_path, out, cfg):
 
     # Per-page hashes: a page's date moves only when its content really changes.
     old = load_manifest(cfg["manifest"]) if cfg.get("manifest") else {}
-    today = cfg["today"].isoformat()
+    stamp = cfg["now"].isoformat(timespec="minutes")
     manifest = {}
     changed = 0
     for rel, html_text in pages.items():
@@ -576,7 +589,7 @@ def build(gtfs_path, out, cfg):
         if prev and prev.get("hash") == digest:
             manifest[rel] = prev
         else:
-            manifest[rel] = {"hash": digest, "lastmod": today}
+            manifest[rel] = {"hash": digest, "lastmod": stamp}
             changed += 1
         write(out, rel, html_text.replace(LASTMOD, lastmod_html(manifest[rel]["lastmod"])))
     if cfg.get("manifest"):
