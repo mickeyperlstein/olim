@@ -129,6 +129,14 @@ class BuildTest(unittest.TestCase):
         self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
         self.assertEqual(build_site.streetview_part(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
 
+    def test_photo_link_in_stop_view(self):
+        stop = self.read("stops/21001.html")
+        block = stop.split("<h2>מבט על התחנה</h2>", 1)[1].split("</section>", 1)[0]
+        self.assertIn('data-goatcounter-click="stop-photo"', block)
+        self.assertIn("1FAIpQLSebfySl9fRH426wO5BBUStbU286SvYIcwFR7IZzy5TPPZGHnA/viewform?usp=pp_url&amp;entry.720812025=21001", block)
+        self.assertIn('data-line-field="entry.570657219"', block)
+        self.assertIn('data-visit-time="entry.127162871"', block)
+
     def test_map_link_pins_the_stop(self):
         # Street View links can't carry a map position, so backing out of them lands
         # on an empty map. The map link drops a pin on the stop instead.

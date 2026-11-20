@@ -55,6 +55,14 @@ def config():
         "stop_form_time_field": os.environ.get("OLIM_STOP_FORM_TIME_FIELD", "entry.1422047506"),
         # Filled by site.js when the visitor reached the stop from a line page.
         "stop_form_line_field": os.environ.get("OLIM_STOP_FORM_LINE_FIELD", "entry.1960515240"),
+        # Photo upload form (Google sign-in required by Forms; photos go to the owner's Drive).
+        "photo_form": os.environ.get(
+            "OLIM_PHOTO_FORM",
+            "https://docs.google.com/forms/d/e/1FAIpQLSebfySl9fRH426wO5BBUStbU286SvYIcwFR7IZzy5TPPZGHnA/viewform",
+        ),
+        "photo_form_stop_field": os.environ.get("OLIM_PHOTO_FORM_STOP_FIELD", "entry.720812025"),
+        "photo_form_line_field": os.environ.get("OLIM_PHOTO_FORM_LINE_FIELD", "entry.570657219"),
+        "photo_form_time_field": os.environ.get("OLIM_PHOTO_FORM_TIME_FIELD", "entry.127162871"),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -484,9 +492,19 @@ def review_part(cfg, stop):
 <a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review" data-visit-time="{e(cfg.get('stop_form_time_field', ''))}" data-line-field="{e(cfg.get('stop_form_line_field', ''))}">דרגו את התחנה</a>"""
 
 
+def photo_part(cfg, stop):
+    if not cfg.get("photo_form"):
+        return ""
+    code = stop.get("stop_code") or stop["stop_id"]
+    url = f"{cfg['photo_form']}?usp=pp_url&{cfg['photo_form_stop_field']}={urllib.parse.quote(code)}"
+    return f"""<h3>תמונות של התחנה</h3>
+<p class="muted">צילמתם את התחנה? שלחו לנו תמונה. התמונות נבדקות לפני שהן מופיעות כאן. (נדרשת כניסה לחשבון Google.)</p>
+<a class="btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-photo" data-visit-time="{e(cfg.get('photo_form_time_field', ''))}" data-line-field="{e(cfg.get('photo_form_line_field', ''))}">הוסיפו תמונה</a>"""
+
+
 def stop_view_block(cfg, stop):
-    """One block: how the stop looks (Street View) and its state (rider review)."""
-    parts = [p for p in (streetview_part(cfg, stop), review_part(cfg, stop)) if p]
+    """One block: how the stop looks (Street View), its state (rider review) and photos."""
+    parts = [p for p in (streetview_part(cfg, stop), review_part(cfg, stop), photo_part(cfg, stop)) if p]
     if not parts:
         return ""
     return '<section class="card"><h2>מבט על התחנה</h2>\n' + "\n".join(parts) + "\n</section>"

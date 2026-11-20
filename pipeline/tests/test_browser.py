@@ -105,6 +105,21 @@ def test_stop_review_sends_line_when_coming_from_a_line(site, open_page):
     assert query["entry.1960515240"] == ["18 לכיוון תחנה מרכזית (תל אביב יפו)"]
 
 
+def test_stop_photo_sends_stop_line_and_time(site, open_page):
+    from urllib.parse import parse_qs, urlparse
+
+    page = open_page(site, f"{STOP_PAGE}?line={LINE}&dir=1")
+    page.evaluate("Date.now = () => new Date(2026, 10, 20, 4, 10).getTime()")
+    page.locator('a[data-goatcounter-click="stop-photo"]').click()
+    page.wait_for_timeout(500)
+    forms = [u for u in page.requested if "1FAIpQLSebfySl9fRH426wO5BBUStbU286SvYIcwFR7IZzy5TPPZGHnA" in u]
+    assert forms, "tapping the photo button opened nothing"
+    query = parse_qs(urlparse(forms[-1]).query)
+    assert query["entry.720812025"] == ["21001"]
+    assert query["entry.570657219"] == ["18 לכיוון תחנה מרכזית (תל אביב יפו)"]
+    assert query["entry.127162871"] == ["2026-11-20 04:10"]
+
+
 def test_stop_review_without_line_leaves_it_blank(site, open_page):
     page = open_page(site, STOP_PAGE)
     query = _review_query(page)
