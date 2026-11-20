@@ -10,6 +10,7 @@ is public by design: the same key is served at https://<site>/<key>.txt.
 
 import json
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -41,14 +42,38 @@ def http_post(url, data, headers):
         return err.code
 
 
-def submit(urls, base_url, key, post=http_post, batch=MAX_BATCH):
-    """Submit urls in batches; returns the number of requests sent."""
+def http_get_text(url):
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:
+            return resp.read().decode("utf-8", "replace").strip()
+    except (urllib.error.URLError, OSError):
+        return None
+
+
+def wait_for_key(base_url, key, fetch=http_get_text, sleep=time.sleep, attempts=20, delay=15):
+    """Right after a deploy the CDN may not serve the key file yet; IndexNow
+    checks it and refuses (403) until it does. Poll until the key is live."""
+    url = f"{base_url.rstrip('/')}/{key}.txt"
+    for i in range(attempts):
+        if fetch(url) == key:
+            return True
+        if i < attempts - 1:
+            sleep(delay)
+    return False
+
+
+def submit(urls, base_url, key, post=http_post, batch=MAX_BATCH, sleep=time.sleep, retries=4, delay=60):
+    """Submit urls in batches, retrying refusals with growing waits; returns requests sent."""
     sent = 0
     for i in range(0, len(urls), batch):
         body = json.dumps(payload(urls[i:i + batch], base_url, key)).encode("utf-8")
-        status = post(ENDPOINT, body, {"Content-Type": "application/json; charset=utf-8"})
-        if status not in (200, 202):
-            raise RuntimeError(f"IndexNow rejected the submission: HTTP {status}")
+        for attempt in range(1, retries + 1):
+            status = post(ENDPOINT, body, {"Content-Type": "application/json; charset=utf-8"})
+            if status in (200, 202):
+                break
+            if attempt == retries:
+                raise RuntimeError(f"IndexNow rejected the submission: HTTP {status}")
+            sleep(delay * attempt)
         sent += 1
     return sent
 
@@ -61,5 +86,7 @@ if __name__ == "__main__":
 
     cfg = build_site.config()
     urls = read_list(sys.argv[1])
+    if urls and not wait_for_key(cfg["base_url"], cfg["indexnow_key"]):
+        raise SystemExit("IndexNow: key file never became reachable; not submitting")
     n = submit(urls, cfg["base_url"], cfg["indexnow_key"])
     print(f"IndexNow: {len(urls)} changed pages in {n} request(s)")
