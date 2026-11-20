@@ -332,6 +332,13 @@ class NationalTest(unittest.TestCase):
         self.assertIn('href="cities/%D7%A7%D7%A8%D7%99%D7%AA-%D7%90%D7%95%D7%A0%D7%95.html"', index)
         self.assertNotIn('href="lines/', index)
 
+    def test_index_cities_alphabetical(self):
+        import re as _re
+        index = self.read("index.html")
+        names = _re.findall(r'<li><a href="cities/[^"]+">([^<]+)</a>', index)
+        self.assertEqual(names, ["חיפה", "קרית אונו", "תל אביב יפו"])
+        self.assertEqual(names, sorted(names))
+
     def test_line_and_stop_pages_link_to_their_cities(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn('href="../cities/%D7%A7%D7%A8%D7%99%D7%AA-%D7%90%D7%95%D7%A0%D7%95.html"', line)
