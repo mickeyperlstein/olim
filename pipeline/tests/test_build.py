@@ -114,6 +114,16 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(len(re.findall("<url>", sitemap)), self.stats["pages"])
         self.assertIn("OAI-SearchBot", self.read("robots.txt"))
 
+    def test_streetview(self):
+        stop = self.read("stops/21001.html")
+        self.assertIn("map_action=pano&amp;viewpoint=32.060000,34.850000", stop)
+        self.assertNotIn("sv-btn", stop)  # no key, no embed
+        cfg = build_site.config()
+        cfg["maps_key"] = "KEY"
+        block = build_site.streetview_block(cfg, {"stop_lat": "32.06", "stop_lon": "34.85"})
+        self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
+        self.assertEqual(build_site.streetview_block(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
+
     def test_html_is_escaped(self):
         self.assertEqual(build_site.e('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;")
 

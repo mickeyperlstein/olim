@@ -36,6 +36,8 @@ def config():
             "OLIM_GOATCOUNTER", "https://olim.goatcounter.com/count"
         ),
         "today": dt.date.today(),
+        # Optional Google Maps Embed API key (free; restrict it to the site's domain).
+        "maps_key": os.environ.get("OLIM_MAPS_KEY", "").strip(),
     }
 
 
@@ -408,6 +410,38 @@ def render_line(cfg, line, stops):
                 path=f"lines/{line_slug(line)}.html", body=body, depth=1, faq=faq)
 
 
+def coords(stop):
+    try:
+        lat, lon = float(stop.get("stop_lat", "")), float(stop.get("stop_lon", ""))
+    except ValueError:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return f"{lat:.6f},{lon:.6f}"
+
+
+def streetview_block(cfg, stop):
+    """A Street View link, plus a tap-to-load embed when a key is configured.
+    Nothing from Google loads until the visitor taps."""
+    loc = coords(stop)
+    if not loc:
+        return ""
+    link = f"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint={loc}"
+    embed = ""
+    if cfg.get("maps_key"):
+        src = f"https://www.google.com/maps/embed/v1/streetview?key={cfg['maps_key']}&location={loc}&fov=80"
+        embed = (
+            f'<button type="button" class="sv-btn" data-src="{e(src)}" data-goatcounter-click="streetview-open" '
+            "onclick=\"var f=document.createElement('iframe');f.src=this.dataset.src;f.className='sv';"
+            "f.title='מבט רחוב על התחנה';f.loading='lazy';f.allowFullscreen=true;"
+            "f.referrerPolicy='no-referrer-when-downgrade';this.replaceWith(f);\">הצגת מבט רחוב על התחנה</button>"
+        )
+    return f"""<section class="card"><h2>איך התחנה נראית</h2>
+{embed}
+<p class="muted"><a href="{e(link)}" target="_blank" rel="noopener" data-goatcounter-click="streetview-link">פתיחה ב־Google Street View</a>. במקומות מסוימים אין מבט רחוב ליד התחנה.</p>
+</section>"""
+
+
 def render_stop(cfg, stop, serving, lines):
     name = stop["stop_name"]
     city = stop["city"]
@@ -435,6 +469,7 @@ def render_stop(cfg, stop, serving, lines):
 <section class="card"><h1>{e(title)}</h1>
 <p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(numbers)} קווים עוצרים כאן</p></section>
 <section class="card"><h2>קווים בתחנה</h2><ul class="lines">{''.join(items)}</ul></section>
+{streetview_block(cfg, stop)}
 {faq_block(faq)}
 """
     desc = f"אילו קווים עוצרים ב{title}, ומתי. מבוסס על נתוני משרד התחבורה."
