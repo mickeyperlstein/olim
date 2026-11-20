@@ -26,7 +26,7 @@ from collections import defaultdict
 
 
 def config():
-    cities = os.environ.get("OLIM_CITIES", "קרית אונו|קריית אונו")
+    cities = os.environ.get("OLIM_CITIES", "*")
     return {
         "cities": [c.strip() for c in cities.split("|") if c.strip()],
         "base_url": os.environ.get(
@@ -293,6 +293,19 @@ def line_slug(line):
     return re.sub(r"[^0-9A-Za-z_-]", "_", line["id"])
 
 
+def url_path(rel):
+    """Site-relative path as it appears in URLs (Hebrew city names percent-encoded)."""
+    return urllib.parse.quote(rel)
+
+
+def city_slug(name):
+    return re.sub(r"\s+", "-", name.strip())
+
+
+def city_href(name, depth):
+    return "../" * depth + url_path(f"cities/{city_slug(name)}.html")
+
+
 def page(cfg, *, title, description, path, body, depth, faq=None):
     root = "../" * depth
     ld = ""
@@ -313,7 +326,7 @@ def page(cfg, *, title, description, path, body, depth, faq=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{e(title)}</title>
 <meta name="description" content="{e(description)}">
-<link rel="canonical" href="{e(cfg['base_url'] + path)}">
+<link rel="canonical" href="{e(cfg['base_url'] + url_path(path))}">
 <link rel="stylesheet" href="{root}style.css">
 <script src="{root}site.js" defer></script>
 {ld}
@@ -446,11 +459,16 @@ def render_line(cfg, line, stops):
         f'<a href="#dir-{e(d["id"])}">לכיוון {e(d["dest"] or d["origin"])}</a>' for d in line["directions"]
     )
     summary = " · ".join(x for x in (line["type"], line["operator"]) if x)
+    served_in = ""
+    if line.get("cities"):
+        links = " · ".join(f'<a href="{e(city_href(c, 1))}">{e(c)}</a>' for c in line["cities"])
+        served_in = f'<p class="muted">עובר ב: {links}</p>'
+
     body = f"""
 <nav class="crumbs"><a href="../index.html">קווים</a> › קו {e(line['number'])}</nav>
 <section class="card hero">
 <div class="badge">{e(line['number'])}</div>
-<div><h1>{e(title)}</h1><p class="muted">{e(summary)}</p><p class="jumps">{jumps}</p></div>
+<div><h1>{e(title)}</h1><p class="muted">{e(summary)}</p>{served_in}<p class="jumps">{jumps}</p></div>
 </section>
 {''.join(direction_block(d, stops, line) for d in line['directions'])}
 {faq_block(faq)}
@@ -544,9 +562,10 @@ def render_stop(cfg, stop, serving, lines):
     if first_times:
         faq.append((f"מתי עובר האוטובוס הראשון בתחנה {name}?", f"בימים א׳–ה׳ בסביבות {fmt_time(min(first_times))}."))
     code = stop.get("stop_code") or ""
+    city_crumb = f'<a href="{e(city_href(city, 1))}">{e(city)}</a> › ' if city else ""
     title = f"תחנת {name}" + (f", {city}" if city else "")
     body = f"""
-<nav class="crumbs"><a href="../index.html">קווים</a> › תחנה</nav>
+<nav class="crumbs"><a href="../index.html">קווים</a> › {city_crumb}תחנה</nav>
 <section class="card"><h1>{e(title)}</h1>
 <p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(numbers)} קווים עוצרים כאן</p></section>
 <section class="card"><h2>קווים בתחנה</h2><ul class="lines">{''.join(items)}</ul></section>
@@ -558,19 +577,39 @@ def render_stop(cfg, stop, serving, lines):
                 path=f"stops/{stop_slug(stop)}.html", body=body, depth=1, faq=faq)
 
 
-def render_index(cfg, lines):
-    items = "".join(
-        f'<li><a href="lines/{line_slug(l)}.html"><span class="mini">{e(l["number"])}</span> {e(line_ends(l))}</a>'
+def line_items(lines_iter, depth):
+    root = "../" * depth
+    return "".join(
+        f'<li><a href="{root}lines/{line_slug(l)}.html"><span class="mini">{e(l["number"])}</span> {e(line_ends(l))}</a>'
         f'<span class="muted">{e(l["operator"])}</span></li>'
-        for l in sorted(lines.values(), key=lambda l: (natural_key(l), l["operator"]))
+        for l in sorted(lines_iter, key=lambda l: (natural_key(l), l["operator"]))
     )
-    cities = " / ".join(cfg["cities"][:1])
+
+
+def render_city(cfg, city, city_lines):
     body = f"""
-<section class="card"><h1>קווי אוטובוס ורכבת ב{e(cities)}</h1>
-<p class="muted">כל הקווים שעוצרים בעיר, עם תחנות ושעות יציאה.</p></section>
+<nav class="crumbs"><a href="../index.html">קווים</a> › {e(city)}</nav>
+<section class="card"><h1>קווי אוטובוס ורכבת ב{e(city)}</h1>
+<p class="muted">{len(city_lines)} קווים עוצרים ב{e(city)}, עם תחנות ושעות יציאה.</p></section>
+<section class="card"><ul class="lines">{line_items(city_lines, 1)}</ul></section>
+"""
+    return page(cfg, title=f"קווי תחבורה ציבורית ב{city}",
+                description=f"כל קווי האוטובוס והרכבת ב{city}: תחנות, שעות ותשובות לשאלות נפוצות.",
+                path=f"cities/{city_slug(city)}.html", body=body, depth=1)
+
+
+def render_index(cfg, cities):
+    items = "".join(
+        f'<li><a href="{e(city_href(c, 0))}">{e(c)}</a><span class="muted">{len(ls)} קווים</span></li>'
+        for c, ls in sorted(cities.items())
+    )
+    body = f"""
+<section class="card"><h1>קווי אוטובוס ורכבת בישראל</h1>
+<p class="muted">בחרו עיר כדי לראות את כל הקווים שעוצרים בה, עם תחנות ושעות יציאה.</p></section>
 <section class="card"><ul class="lines">{items}</ul></section>
 """
-    return page(cfg, title=f"קווי תחבורה ציבורית ב{cities}", description=f"כל קווי האוטובוס והרכבת ב{cities}: תחנות, שעות ותשובות לשאלות נפוצות.",
+    return page(cfg, title="קווי תחבורה ציבורית בישראל",
+                description="כל קווי האוטובוס והרכבת בישראל לפי עיר: תחנות, שעות ותשובות לשאלות נפוצות.",
                 path="index.html", body=body, depth=0)
 
 
@@ -674,10 +713,25 @@ def build(gtfs_path, out, cfg):
 
     # Each page: (html, data). The date shown on a page follows its transit data only,
     # so design or address changes don't make every page look updated.
+    # Which cities each line serves, and the lines of each city.
+    cities = defaultdict(list)
+    for line in lines.values():
+        seen = []
+        for d in line["directions"]:
+            for sid, _ in d["stops"]:
+                c = stops[sid].get("city")
+                if c and c not in seen:
+                    seen.append(c)
+        line["cities"] = seen
+        for c in seen:
+            cities[c].append(line)
+
     pages = {
-        "index.html": (render_index(cfg, lines), index_data(lines)),
+        "index.html": (render_index(cfg, cities), sorted([c, len(ls)] for c, ls in cities.items())),
         "notify.html": (render_notify(cfg), "notify"),
     }
+    for c, ls in cities.items():
+        pages[f"cities/{city_slug(c)}.html"] = (render_city(cfg, c, ls), [c, index_data({l["id"]: l for l in ls})])
     for line in lines.values():
         pages[f"lines/{line_slug(line)}.html"] = (render_line(cfg, line, stops), line_data(line, stops))
     for sid, serving in stop_lines.items():
@@ -715,17 +769,30 @@ def build(gtfs_path, out, cfg):
             write(out, asset, f.read())
     write(out, "robots.txt", ROBOTS.format(base=cfg["base_url"]))
     listed = [p for p in manifest if p != "notify.html"]
-    urls = "".join(
-        f"<url><loc>{e(cfg['base_url'] + p)}</loc><lastmod>{manifest[p]['lastmod']}</lastmod></url>" for p in listed
-    )
-    write(out, "sitemap.xml", f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')
+    # One sitemap per page type, under a sitemap index at /sitemap.xml.
+    parts = {"pages": [], "lines": [], "stops": []}
+    for p in sorted(listed):
+        kind = p.split("/", 1)[0] if p.startswith(("lines/", "stops/")) else "pages"
+        parts[kind].append(p)
+    ns = 'xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'
+    index_entries = []
+    for kind, paths in parts.items():
+        urls = "".join(
+            f"<url><loc>{e(cfg['base_url'] + url_path(p))}</loc><lastmod>{manifest[p]['lastmod']}</lastmod></url>"
+            for p in paths
+        )
+        write(out, f"sitemap-{kind}.xml", f'<?xml version="1.0" encoding="UTF-8"?>\n<urlset {ns}>{urls}</urlset>\n')
+        newest = max((manifest[p]["lastmod"] for p in paths), default=None)
+        index_entries.append(f"<sitemap><loc>{e(cfg['base_url'])}sitemap-{kind}.xml</loc>"
+                             + (f"<lastmod>{newest}</lastmod>" if newest else "") + "</sitemap>")
+    write(out, "sitemap.xml", f'<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex {ns}>{"".join(index_entries)}</sitemapindex>\n')
     write(out, ".nojekyll", "")
     if cfg.get("indexnow_key"):
         write(out, f"{cfg['indexnow_key']}.txt", cfg["indexnow_key"])
     if cfg.get("bing_site_auth"):
         write(out, "BingSiteAuth.xml",
               f'<?xml version="1.0"?>\n<users>\n\t<user>{e(cfg["bing_site_auth"])}</user>\n</users>\n')
-    changed_urls = [cfg["base_url"] + p for p in listed if cfg.get("announce_all") or p in changed_paths]
+    changed_urls = [cfg["base_url"] + url_path(p) for p in listed if cfg.get("announce_all") or p in changed_paths]
     if cfg.get("changed_out"):
         with open(cfg["changed_out"], "w", encoding="utf-8") as f:
             f.write("".join(u + "\n" for u in changed_urls))

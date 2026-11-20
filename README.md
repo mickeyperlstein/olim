@@ -1,6 +1,6 @@
 # olim
 
-Static pages for every bus and train line and stop in a city, built nightly from the Israel Ministry of Transport GTFS feed and published on GitHub Pages. The pages exist to be found in Google and AI search, and to measure demand for an app that rides along with you.
+Static pages for every bus and train line and stop in Israel, grouped by city, built nightly from the Israel Ministry of Transport GTFS feed and published on GitHub Pages. The pages exist to be found in Google and AI search, and to measure demand for an app that rides along with you.
 
 ## How it works
 
@@ -21,7 +21,7 @@ Environment variables read by `build_site.py`:
 
 | Variable | Default |
 |---|---|
-| `OLIM_CITIES` | `קרית אונו\|קריית אונו` (the `עיר:` value in `stops.txt`, `\|`-separated) |
+| `OLIM_CITIES` | `*` (the whole country), or `עיר:` values from `stops.txt`, `\|`-separated |
 | `OLIM_BASE_URL` | `https://olim-app.com/` |
 | `OLIM_GOATCOUNTER` | `https://olim.goatcounter.com/count` |
 | `OLIM_SITE_NAME` | `עולים` |

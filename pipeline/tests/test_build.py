@@ -116,8 +116,9 @@ class BuildTest(unittest.TestCase):
         self.assertIn('data-goatcounter-click="notify-click"', line)
 
     def test_sitemap_and_robots(self):
-        sitemap = self.read("sitemap.xml")
-        self.assertEqual(len(re.findall("<url>", sitemap)), self.stats["pages"])
+        total = sum(len(re.findall("<url>", self.read(f"sitemap-{part}.xml")))
+                    for part in ("pages", "lines", "stops"))
+        self.assertEqual(total, self.stats["pages"])
         self.assertIn("OAI-SearchBot", self.read("robots.txt"))
 
     def test_streetview(self):
@@ -168,7 +169,7 @@ class BuildTest(unittest.TestCase):
     def test_site_lives_on_own_domain(self):
         line = self.read(f"lines/{LINE}.html")
         self.assertIn(f'<link rel="canonical" href="https://olim-app.com/lines/{LINE}.html">', line)
-        self.assertIn("<loc>https://olim-app.com/index.html</loc>", self.read("sitemap.xml"))
+        self.assertIn("<loc>https://olim-app.com/index.html</loc>", self.read("sitemap-pages.xml"))
         self.assertIn("Sitemap: https://olim-app.com/sitemap.xml", self.read("robots.txt"))
         self.assertNotIn("github.io", line)
 
@@ -197,7 +198,7 @@ class BuildTest(unittest.TestCase):
 
     def test_last_updated_moves_only_on_change(self):
         self.assertIn('<time datetime="2026-11-20T00:47+02:00">עודכן לאחרונה בתאריך 20.11.2026 ובשעה 00:47</time>.', self.read("index.html"))
-        self.assertIn("<lastmod>2026-11-20T00:47+02:00</lastmod>", self.read("sitemap.xml"))
+        self.assertIn("<lastmod>2026-11-20T00:47+02:00</lastmod>", self.read("sitemap-pages.xml"))
         # Rebuild a day later from the same feed: nothing changed, dates stay.
         day = _dt.timedelta(days=1)
         cfg = dict(self.cfg, today=TODAY + day, now=NOW + day)
@@ -291,3 +292,64 @@ class BuildTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NationalTest(unittest.TestCase):
+    """The whole-country build: city pages, a light national index, split sitemaps."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp()
+        cls.zip = os.path.join(cls.tmp, "gtfs.zip")
+        with zipfile.ZipFile(cls.zip, "w") as zf:
+            for name, text in FILES.items():
+                zf.writestr(name, text)
+        cls.out = os.path.join(cls.tmp, "site")
+        cfg = build_site.config()
+        cfg.update(cities=["*"], today=TODAY, now=NOW, manifest=os.path.join(cls.tmp, "pages.json"))
+        cls.stats = build_site.build(cls.zip, cls.out, cfg)
+
+    def read(self, rel):
+        with open(os.path.join(self.out, rel), encoding="utf-8") as f:
+            return f.read()
+
+    def test_default_is_whole_country(self):
+        self.assertEqual(build_site.config()["cities"], ["*"])
+
+    def test_city_pages_list_their_lines(self):
+        ono = self.read("cities/קרית-אונו.html")
+        self.assertIn(f'href="../lines/{LINE}.html"', ono)
+        self.assertNotIn('href="../lines/10009-3.html"', ono)
+        tlv = self.read("cities/תל-אביב-יפו.html")
+        self.assertIn(f'href="../lines/{LINE}.html"', tlv)  # line 18 serves both cities
+        haifa = self.read("cities/חיפה.html")
+        self.assertIn('href="../lines/10009-3.html"', haifa)
+        self.assertIn('<link rel="canonical" href="https://olim-app.com/cities/%D7%97%D7%99%D7%A4%D7%94.html">', haifa)
+
+    def test_index_lists_cities_not_lines(self):
+        index = self.read("index.html")
+        self.assertEqual(index.count('href="cities/'), 3)
+        self.assertIn('href="cities/%D7%A7%D7%A8%D7%99%D7%AA-%D7%90%D7%95%D7%A0%D7%95.html"', index)
+        self.assertNotIn('href="lines/', index)
+
+    def test_line_and_stop_pages_link_to_their_cities(self):
+        line = self.read(f"lines/{LINE}.html")
+        self.assertIn('href="../cities/%D7%A7%D7%A8%D7%99%D7%AA-%D7%90%D7%95%D7%A0%D7%95.html"', line)
+        self.assertIn('href="../cities/%D7%AA%D7%9C-%D7%90%D7%91%D7%99%D7%91-%D7%99%D7%A4%D7%95.html"', line)
+        stop = self.read("stops/41004.html")
+        self.assertIn('href="../cities/%D7%97%D7%99%D7%A4%D7%94.html"', stop)
+
+    def test_sitemap_is_split_by_type(self):
+        index = self.read("sitemap.xml")
+        self.assertIn("<sitemapindex", index)
+        total = 0
+        for part in ("sitemap-pages.xml", "sitemap-lines.xml", "sitemap-stops.xml"):
+            self.assertIn(f"<loc>https://olim-app.com/{part}</loc>", index)
+            total += self.read(part).count("<url>")
+        self.assertEqual(total, self.stats["pages"])
+        self.assertIn("<loc>https://olim-app.com/cities/%D7%97%D7%99%D7%A4%D7%94.html</loc>",
+                      self.read("sitemap-pages.xml"))
+        self.assertIn("<loc>https://olim-app.com/stops/41004.html</loc>", self.read("sitemap-stops.xml"))
+
+    def test_changed_urls_are_encoded(self):
+        self.assertIn("https://olim-app.com/cities/%D7%97%D7%99%D7%A4%D7%94.html", self.stats["changed_urls"])
