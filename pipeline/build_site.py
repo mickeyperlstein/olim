@@ -377,10 +377,11 @@ def times_block(departures):
 
 def direction_block(d, stops):
     rows = []
-    for sid, offset in d["stops"]:
+    for i, (sid, offset) in enumerate(d["stops"], 1):
         s = stops[sid]
         rows.append(
-            f'<li><a href="../stops/{stop_slug(s)}.html">{e(s["stop_name"])}</a>'
+            f'<li><span class="stop"><span class="num">{i}</span>'
+            f'<a href="../stops/{stop_slug(s)}.html">{e(s["stop_name"])}</a></span>'
             f'<span class="muted">+{offset} דק׳</span></li>'
         )
     meta = f"{len(d['stops'])} תחנות"

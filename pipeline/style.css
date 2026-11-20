@@ -38,6 +38,8 @@ main { display: flex; flex-direction: column; gap: 16px; padding-top: 16px; padd
 .route li, .lines li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .route li:last-child, .lines li:last-child { border-bottom: 0; }
 .route a, .lines a { text-decoration: none; color: var(--text); }
+.route .stop { display: flex; align-items: baseline; gap: 10px; }
+.route .num { min-width: 28px; height: 28px; border-radius: 999px; border: 2px solid var(--accent); color: var(--accent); font-size: 13px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .times { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .times li { border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
 .card h4 { margin: 10px 0 6px; font-size: 14px; color: var(--muted); }

@@ -124,6 +124,11 @@ class BuildTest(unittest.TestCase):
         self.assertIn("embed/v1/streetview?key=KEY&amp;location=32.060000,34.850000", block)
         self.assertEqual(build_site.streetview_block(cfg, {"stop_lat": "x", "stop_lon": ""}), "")
 
+    def test_stops_are_numbered(self):
+        line = self.read(f"lines/{LINE}.html")
+        self.assertIn('<span class="num">1</span><a href="../stops/21001.html">', line)
+        self.assertIn('<span class="num">3</span><a href="../stops/31003.html">', line)
+
     def test_search_box_on_every_page(self):
         for rel in ("index.html", f"lines/{LINE}.html", "stops/21001.html"):
             self.assertIn('id="find"', self.read(rel), rel)
