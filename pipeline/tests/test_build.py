@@ -159,6 +159,12 @@ class BuildTest(unittest.TestCase):
             self.assertIn('datetime="2026-11-21T00:47+02:00">21.11.2026, 00:47', f.read())
         self.assertIn("20.11.2026", build_site.lastmod_html("2026-11-20"))  # older date-only entries
 
+    def test_forms(self):
+        stop = self.read("stops/21001.html")
+        self.assertIn("viewform?usp=pp_url&amp;entry.490134728=21001", stop)
+        self.assertIn('data-goatcounter-click="stop-review"', stop)
+        self.assertIn('data-goatcounter-click="signup-open"', self.read("notify.html"))
+
     def test_html_is_escaped(self):
         self.assertEqual(build_site.e('<b>"x"</b>'), "&lt;b&gt;&quot;x&quot;&lt;/b&gt;")
 

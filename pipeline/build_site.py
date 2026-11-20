@@ -18,6 +18,7 @@ import os
 import re
 import statistics
 import sys
+import urllib.parse
 import zipfile
 from collections import defaultdict
 
@@ -40,6 +41,16 @@ def config():
         "now": israel_now(),
         # Optional Google Maps Embed API key (free; restrict it to the site's domain).
         "maps_key": os.environ.get("OLIM_MAPS_KEY", "").strip(),
+        # Google Forms: launch signup, and a per-stop review pre-filled with the stop code.
+        "signup_form": os.environ.get(
+            "OLIM_SIGNUP_FORM",
+            "https://docs.google.com/forms/d/e/1FAIpQLScQzYSW9U4ZnGtokCQOT5LBOCed1Vc57j3ERfDHDnq8DoetAQ/viewform",
+        ),
+        "stop_form": os.environ.get(
+            "OLIM_STOP_FORM",
+            "https://docs.google.com/forms/d/e/1FAIpQLSeJL4HDv-7wOaXQWU5bgU2gmSsg4Gma-11QlkdTzWYL91or7g/viewform",
+        ),
+        "stop_form_field": os.environ.get("OLIM_STOP_FORM_FIELD", "entry.490134728"),
         # Page hashes and last-changed dates, committed to the repo by the workflow.
         "manifest": os.environ.get("OLIM_MANIFEST", "data/pages.json"),
     }
@@ -455,6 +466,17 @@ def streetview_block(cfg, stop):
 </section>"""
 
 
+def review_block(cfg, stop):
+    if not cfg.get("stop_form"):
+        return ""
+    code = stop.get("stop_code") or stop["stop_id"]
+    url = f"{cfg['stop_form']}?usp=pp_url&{cfg['stop_form_field']}={urllib.parse.quote(code)}"
+    return f"""<section class="card"><h2>עמדתם בתחנה הזו?</h2>
+<p class="muted">ספרו לנו בדקה: כמה היא נקייה, אם קל למצוא אותה, אם יש פח, גרפיטי או מקום לקנות שתייה בסביבה.</p>
+<a class="sv-btn" href="{e(url)}" target="_blank" rel="noopener" data-goatcounter-click="stop-review">דרגו את התחנה</a>
+</section>"""
+
+
 def render_stop(cfg, stop, serving, lines):
     name = stop["stop_name"]
     city = stop["city"]
@@ -483,6 +505,7 @@ def render_stop(cfg, stop, serving, lines):
 <p class="muted">{('מספר תחנה ' + e(code) + ' · ') if code else ''}{len(numbers)} קווים עוצרים כאן</p></section>
 <section class="card"><h2>קווים בתחנה</h2><ul class="lines">{''.join(items)}</ul></section>
 {streetview_block(cfg, stop)}
+{review_block(cfg, stop)}
 {faq_block(faq)}
 """
     desc = f"אילו קווים עוצרים ב{title}, ומתי. מבוסס על נתוני משרד התחבורה."
@@ -507,10 +530,17 @@ def render_index(cfg, lines):
 
 
 def render_notify(cfg):
-    body = """
+    signup = cfg.get("signup_form")
+    action = (
+        f'<p><a class="sv-btn" href="{e(signup)}" target="_blank" rel="noopener" '
+        f'data-goatcounter-click="signup-open">השאירו מייל ונעדכן כשהיא יוצאת</a></p>'
+        if signup else "<p>ההרשמה לעדכונים תיפתח בקרוב.</p>"
+    )
+    body = f"""
 <section class="card"><h1>האפליקציה בדרך</h1>
 <p>תודה שהתעניינתם. אנחנו בודקים כמה אנשים רוצים אפליקציה שנוסעת איתם: מזהה באיזה קו הם, מתריעה על סטיות ואומרת מתי לרדת.</p>
-<p>ההרשמה לעדכונים תיפתח בקרוב.</p></section>
+{action}
+<p class="muted">נשלח מייל אחד, כשהאפליקציה יוצאת. בלי ספאם.</p></section>
 """
     return page(cfg, title="האפליקציה בדרך", description="אפליקציה שנוסעת איתכם באוטובוס וברכבת.",
                 path="notify.html", body=body, depth=0)
