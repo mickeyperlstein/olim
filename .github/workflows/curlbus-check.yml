@@ -1,0 +1,53 @@
+name: curlbus live check (temporary)
+
+# Checks whether curlbus.app returns live arrivals at busy stops.
+# Runs only on the curlbus-check branch. Publishes and commits nothing.
+on:
+  push:
+    branches: [curlbus-check]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Find stops near busy places, then fetch arrivals twice, 3 minutes apart
+        run: |
+          set -u
+          places="tlv_arlozorov:32.0838,34.7978 jerusalem_central:31.7893,35.2033 kiryat_ono:32.0630,34.8550"
+          codes=""
+          for p in $places; do
+            name=${p%%:*}; ll=${p#*:}; lat=${ll%,*}; lon=${ll#*,}
+            echo "== nearby $name"
+            curl -s -m 20 -H 'Accept: application/json' "https://curlbus.app/nearby?lat=$lat&lon=$lon&radius=300" > nearby_$name.json || true
+            head -c 600 nearby_$name.json; echo
+            c=$(python3 -c "import json,sys;d=json.load(open('nearby_$name.json'));s=d if isinstance(d,list) else d.get('stops',d);print(','.join(str(x.get('stop_code') or x.get('code') or '') for x in s[:2]))" 2>/dev/null || true)
+            echo "codes for $name: $c"; codes="$codes ${c//,/ }"
+          done
+          codes="$codes 21001"
+          for round in 1 2; do
+            echo "######## round $round at $(date -u +%H:%M:%S)Z"
+            for c in $codes; do
+              [ -z "$c" ] && continue
+              curl -s -m 20 -H 'Accept: application/json' "https://curlbus.app/$c" > s_$c.json || true
+              python3 - "$c" <<'PY'
+          import json, sys, datetime
+          code = sys.argv[1]
+          try:
+              d = json.load(open(f"s_{code}.json"))
+          except Exception as e:
+              print(code, "not JSON:", open(f"s_{code}.json").read()[:200]); sys.exit()
+          info = d.get("stop_info") or {}
+          name = (info.get("name") or {}).get("HE") if isinstance(info.get("name"), dict) else info.get("name")
+          visits = (d.get("visits") or {}).get(code, [])
+          print(f"stop {code} {name or ''} errors={d.get('errors')} feed_ts={d.get('timestamp')} arrivals={len(visits)}")
+          for v in visits[:6]:
+              print("   line", v.get("line_name"), "eta", v.get("eta"), "trip", v.get("trip_id"),
+                    "veh", v.get("vehicle_ref"), "loc", "yes" if v.get("location") else "no", "predicted_at", v.get("timestamp"))
+          PY
+            done
+            [ $round = 1 ] && sleep 180
+          done
